@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+.env
+screenshots/chat_original.mp4

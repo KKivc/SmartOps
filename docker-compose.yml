@@ -1,0 +1,11 @@
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    restart: unless-stopped
+
+volumes:
+  loki-data:

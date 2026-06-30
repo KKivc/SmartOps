@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartOps</title>
+    <style>
+        /* =============== 主题变量 =============== */
+        :root {
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+            --accent: #06b6d4;
+            --accent-dim: #0891b2;
+            --green: #10b981;
+            --red: #ef4444;
+        }
+        [data-theme="dark"] {
+            --bg: #090d14;
+            --card-bg: #111827;
+            --card-border: #1e293b;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        /* =============== 重置 & 基础 =============== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            transition: background 0.3s, color 0.3s;
+        }
+
+        /* =============== 布局 =============== */
+        .container { display: flex; min-height: 100vh; }
+
+        /* =============== 侧边栏 =============== */
+        .sidebar {
+            width: 240px;
+            background: #0b1120;
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-brand {
+            padding: 28px 20px 20px;
+            border-bottom: 1px solid #1a2332;
+        }
+        .sidebar-logo {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+        .sidebar-logo span { color: #0ec8e6; }
+        .sidebar-subtitle {
+            display: block;
+            font-size: 11px;
+            color: #475569;
+            margin-top: 6px;
+            letter-spacing: 1px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 12px 0;
+        }
+        .sidebar-label {
+            padding: 16px 20px 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #475569;
+            letter-spacing: 1px;
+        }
+        .sidebar ul { list-style: none; padding: 0; margin: 0; }
+        .sidebar li {
+            padding: 10px 20px;
+            margin: 2px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #94a3b8;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+        .sidebar li:hover {
+            background: #151f31;
+            color: #e2e8f0;
+        }
+        .sidebar li.active {
+            background: rgba(14,200,230,0.08);
+            color: #0ec8e6;
+            font-weight: 600;
+        }
+        .sidebar li.active::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 20px;
+            background: #0ec8e6;
+            border-radius: 0 3px 3px 0;
+        }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid #1a2332;
+        }
+        .theme-btn {
+            width: 100%;
+            padding: 10px;
+            background: #151f31;
+            color: #94a3b8;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .theme-btn:hover {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+
+        /* =============== 主区域 =============== */
+        .main { flex: 1; padding: 32px; overflow-y: auto; }
+        .main h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+
+        .main #content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        /* =============== 统计栏 =============== */
+        .summary {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            width: 100%;
+        }
+        .stat {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 20px 28px;
+            box-shadow: var(--shadow);
+            font-size: 15px;
+            font-weight: 600;
+            flex: 1;
+            transition: background 0.3s, border 0.3s;
+        }
+
+        /* =============== 服务器卡片 =============== */
+        .server-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+            width: 240px;
+            height: 250px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+            position: relative;
+        }
+        .server-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--accent);
+            box-shadow: 0 8px 24px rgba(6,182,212,0.12);
+        }
+        .server-card h3 {
+            margin-bottom: 12px;
+            font-size: 17px;
+            color: var(--text);
+        }
+        .server-card p {
+            margin: 4px 0;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        /* 状态指示灯 — 签名元素 */
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .status-dot.online {
+            background: #10b981;
+            box-shadow: 0 0 8px rgba(16,185,129,0.6);
+            animation: pulse 2s infinite;
+        }
+        .status-dot.offline {
+            background: #ef4444;
+            box-shadow: 0 0 8px rgba(239,68,68,0.4);
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* =============== 趋势图区域 =============== */
+        #chart-area {
+            width: 100%;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: var(--shadow);
+            margin-top: 16px;
+            transition: background 0.3s, border 0.3s;
+        }
+        #chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text);
+        }
+
+        /* =============== 响应式 =============== */
+        @media (max-width: 768px) {
+            .sidebar { width: 200px; padding: 16px 12px; }
+            .main { padding: 20px; }
+            .server-card { width: 100%; height: auto; padding: 20px; }
+            .summary { flex-direction: column; }
+        }
+
+        /* =============== AI 对话 =============== */
+        #chat-page { height: calc(100vh - 120px); }
+        .chat-container {
+            display: flex; height: 100%;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px; overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+        .chat-sidebar {
+            width: 260px; min-width: 260px;
+            border-right: 1px solid var(--card-border);
+            display: flex; flex-direction: column;
+            background: var(--bg);
+        }
+        .chat-sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .chat-sidebar-header button {
+            width: 100%; padding: 10px;
+            background: var(--accent); color: #fff;
+            border: none; border-radius: 8px;
+            cursor: pointer; font-size: 14px; font-weight: 600;
+            transition: background 0.2s;
+        }
+        .chat-sidebar-header button:hover { background: var(--accent-dim); }
+        .chat-conv-list {
+            flex: 1; overflow-y: auto; padding: 8px;
+        }
+        .conv-item {
+            padding: 12px; border-radius: 8px;
+            cursor: pointer; font-size: 13px;
+            color: var(--text); margin-bottom: 4px;
+            white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; transition: background 0.2s;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .conv-item:hover { background: var(--card-border); }
+        .conv-item.active { background: var(--accent); color: #fff; }
+        .conv-item .conv-title {
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+        }
+        .conv-item .conv-del {
+            display: none; background: none; border: none;
+            cursor: pointer; font-size: 14px; padding: 2px 6px;
+            border-radius: 4px; color: var(--text-muted); line-height: 1;
+        }
+        .conv-item:hover .conv-del { display: block; }
+        .conv-item .conv-del:hover { background: rgba(239,68,68,0.15); color: var(--red); }
+        .conv-item.active .conv-del:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+        .chat-main {
+            flex: 1; display: flex; flex-direction: column;
+            min-width: 0;
+        }
+        .chat-welcome {
+            flex: 1; display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            padding: 40px; text-align: center;
+            color: var(--text-muted);
+        }
+        .chat-welcome h2 { font-size: 22px; margin-bottom: 8px; color: var(--text); }
+        .chat-welcome p { margin-bottom: 24px; font-size: 14px; }
+        .template-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 12px; max-width: 480px; width: 100%;
+        }
+        .template-btn {
+            padding: 16px; border: 1px solid var(--card-border);
+            border-radius: 12px; cursor: pointer;
+            font-size: 14px; color: var(--text);
+            background: var(--card-bg);
+            transition: all 0.2s; text-align: center;
+        }
+        .template-btn:hover {
+            border-color: var(--accent); color: var(--accent);
+        }
+
+        .chat-messages {
+            flex: 1; overflow-y: auto; padding: 24px;
+        }
+        .message { margin-bottom: 20px; max-width: 80%; }
+        .message.user { margin-left: auto; }
+        .message.ai { margin-right: auto; }
+        .msg-bubble {
+            padding: 14px 18px; border-radius: 12px;
+            font-size: 14px; line-height: 1.7; word-break: break-word;
+        }
+        .message.user .msg-bubble {
+            background: var(--accent); color: #fff;
+            border-bottom-right-radius: 4px;
+        }
+        .message.ai .msg-bubble {
+            background: var(--bg); color: var(--text);
+            border: 1px solid var(--card-border);
+            border-bottom-left-radius: 4px;
+        }
+        .message.ai .msg-bubble h1,
+        .message.ai .msg-bubble h2,
+        .message.ai .msg-bubble h3 { margin: 16px 0 8px; font-weight: 600; }
+        .message.ai .msg-bubble h1 { font-size: 20px; }
+        .message.ai .msg-bubble h2 { font-size: 18px; }
+        .message.ai .msg-bubble h3 { font-size: 16px; }
+        .message.ai .msg-bubble p { margin-bottom: 8px; }
+        .message.ai .msg-bubble code {
+            background: rgba(0,0,0,0.08); padding: 2px 6px;
+            border-radius: 4px; font-size: 13px; font-family: monospace;
+        }
+        [data-theme="dark"] .message.ai .msg-bubble code {
+            background: rgba(255,255,255,0.1);
+        }
+        .message.ai .msg-bubble pre {
+            background: rgba(0,0,0,0.05); padding: 12px;
+            border-radius: 8px; overflow-x: auto; margin: 8px 0;
+        }
+        [data-theme="dark"] .message.ai .msg-bubble pre {
+            background: rgba(255,255,255,0.05);
+        }
+        .message.ai .msg-bubble pre code { background: none; padding: 0; }
+        .message.ai .msg-bubble ul,
+        .message.ai .msg-bubble ol { margin: 8px 0; padding-left: 24px; }
+        .message.ai .msg-bubble li { margin-bottom: 4px; }
+        .message.ai .msg-bubble strong { font-weight: 600; }
+        .message.ai .msg-bubble hr { margin: 16px 0; border: none; border-top: 1px solid var(--card-border); }
+
+        .chat-input-area {
+            padding: 16px 24px; border-top: 1px solid var(--card-border);
+            display: flex; gap: 12px;
+        }
+        .chat-input-area input {
+            flex: 1; padding: 12px 16px;
+            border: 1px solid var(--card-border); border-radius: 8px;
+            font-size: 14px; outline: none; background: var(--bg); color: var(--text);
+            transition: border-color 0.2s;
+        }
+        .chat-input-area input:focus { border-color: var(--accent); }
+        .chat-input-area button {
+            padding: 12px 24px; background: var(--accent); color: #fff;
+            border: none; border-radius: 8px; cursor: pointer;
+            font-size: 14px; font-weight: 600; transition: background 0.2s;
+        }
+        .chat-input-area button:hover { background: var(--accent-dim); }
+        .chat-input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .chat-empty {
+            text-align: center; color: var(--text-muted);
+            padding: 40px 20px; font-size: 14px;
+        }
+        .typing-dots {
+            display: flex; gap: 4px; align-items: center; padding: 4px 0;
+        }
+        .typing-dots span {
+            width: 8px; height: 8px; background: var(--text-muted);
+            border-radius: 50%; animation: typing 1.4s infinite;
+        }
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+            30% { opacity: 1; transform: translateY(-4px); }
+        }
+
+        /* =============== 异常高亮 =============== */
+        .server-card.warning {
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 0 1px #ef4444, var(--shadow);
+        }
+
+        /* =============== 空状态 =============== */
+        .empty-state {
+            width: 100%; text-align: center;
+            padding: 60px 20px; color: var(--text-muted);
+        }
+        .empty-state p { font-size: 15px; margin-bottom: 16px; }
+
+        /* =============== 服务器表格 =============== */
+        .table-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px; width: 100%;
+        }
+        .table-title { font-size: 14px; color: var(--text-muted); }
+        .add-btn {
+            padding: 8px 18px; background: var(--accent); color: #fff;
+            border: none; border-radius: 8px; cursor: pointer;
+            font-size: 14px; font-weight: 600; transition: background 0.2s;
+        }
+        .add-btn:hover { background: var(--accent-dim); }
+
+        .table-wrapper {
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
+            width: 100%;
+        }
+        .server-table { width: 100%; border-collapse: collapse; }
+        .server-table th {
+            padding: 12px 16px; text-align: left;
+            font-size: 12px; font-weight: 600;
+            color: var(--text-muted); background: var(--bg);
+            border-bottom: 1px solid var(--card-border); white-space: nowrap;
+        }
+        .server-table td {
+            padding: 12px 16px; font-size: 13px;
+            color: var(--text); border-bottom: 1px solid var(--card-border);
+        }
+        .server-table tr:last-child td { border-bottom: none; }
+        .server-table tr:hover { background: rgba(0,0,0,0.02); }
+        [data-theme="dark"] .server-table tr:hover { background: rgba(255,255,255,0.02); }
+        .server-table td strong { font-weight: 600; }
+
+        .del-btn {
+            background: none; border: none; cursor: pointer;
+            font-size: 14px; color: var(--text-muted);
+            padding: 4px 8px; border-radius: 4px; transition: all 0.2s;
+        }
+        .del-btn:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+        /* =============== 趋势选择器 =============== */
+        .server-select {
+            padding: 8px 12px; border: 1px solid var(--card-border);
+            border-radius: 8px; font-size: 14px;
+            background: var(--card-bg); color: var(--text);
+            outline: none; cursor: pointer;
+        }
+        .server-select:focus { border-color: var(--accent); }
+
+        /* =============== 添加服务器弹窗 =============== */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 1000;
+            background: rgba(0,0,0,0.4);
+            display: flex; justify-content: center; align-items: center;
+        }
+        .modal-box {
+            background: var(--card-bg); border-radius: 16px;
+            padding: 32px; width: 400px; max-width: 90vw;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .modal-box h3 { font-size: 18px; margin-bottom: 20px; }
+        .modal-box label {
+            display: block; font-size: 13px; font-weight: 600;
+            color: var(--text-muted); margin-bottom: 4px; margin-top: 16px;
+        }
+        .modal-box label:first-of-type { margin-top: 0; }
+        .modal-box input {
+            width: 100%; padding: 10px 12px;
+            border: 1px solid var(--card-border); border-radius: 8px;
+            font-size: 14px; background: var(--bg); color: var(--text);
+            outline: none; box-sizing: border-box;
+        }
+        .modal-box input:focus { border-color: var(--accent); }
+        .modal-actions {
+            display: flex; gap: 12px; justify-content: flex-end;
+            margin-top: 24px;
+        }
+        .modal-actions button {
+            padding: 10px 20px; border-radius: 8px;
+            cursor: pointer; font-size: 14px; font-weight: 600;
+            transition: all 0.2s;
+        }
+        .modal-actions .btn-cancel {
+            background: var(--bg); color: var(--text-muted);
+            border: 1px solid var(--card-border);
+        }
+        .modal-actions .btn-cancel:hover { border-color: var(--text-muted); }
+        .modal-actions .btn-confirm {
+            background: var(--accent); color: #fff; border: none;
+        }
+        .modal-actions .btn-confirm:hover { background: var(--accent-dim); }
+
+        /* =============== 告警 =============== */
+        .alert-list {
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
+            width: 100%;
+        }
+        .alert-item {
+            padding: 14px 16px; border-bottom: 1px solid var(--card-border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .alert-item:last-child { border-bottom: none; }
+        .alert-info { flex: 1; }
+        .alert-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .alert-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 10px; }
+        .alert-badge {
+            padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+        }
+        .alert-badge.type-offline { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .alert-badge.type-cpu { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .alert-badge.type-memory { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .alert-badge.type-disk { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .alert-status {
+            padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+        }
+        .alert-status.open { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .alert-status.acknowledged { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .alert-status.resolved { background: rgba(16,185,129,0.15); color: #10b981; }
+        .alert-actions { display: flex; gap: 6px; }
+        .alert-actions button {
+            padding: 5px 12px; border: 1px solid var(--card-border);
+            border-radius: 6px; cursor: pointer; font-size: 12px;
+            background: var(--bg); color: var(--text-muted); transition: all 0.2s;
+        }
+        .alert-actions button:hover { border-color: var(--accent); color: var(--accent); }
+        .alert-banner {
+            width: 100%; padding: 12px 16px; border-radius: 10px;
+            font-size: 14px; font-weight: 600; margin-bottom: 16px;
+            background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2);
+        }
+        </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-brand">
+                <div class="sidebar-logo"><span>Smart</span>Ops</div>
+                <span class="sidebar-subtitle">智能运维平台</span>
+            </div>
+            <div class="sidebar-nav">
+                <div class="sidebar-label">监控</div>
+                <ul>
+                    <li data-page="overview" onclick="showPage('overview')">📡 总览</li>
+                    <li data-page="alerts" onclick="showPage('alerts')">🔔 告警</li>
+                    <li data-page="servers" onclick="showPage('servers')">🖥 服务器</li>
+                    <li data-page="trend" onclick="showPage('trend')">📈 趋势</li>
+                </ul>
+                <div class="sidebar-label">工具</div>
+                <ul>
+                    <li data-page="chat" onclick="showPage('chat')">🤖 AI 对话</li>
+                </ul>
+            </div>
+            <div class="sidebar-footer">
+                <button class="theme-btn" onclick="toggleTheme()">🌙</button>
+            </div>
+        </div>
+
+        <!-- 主区域 -->
+        <div class="main">
+            <h1 id="page-title">总览</h1>
+            <div id="content">加载中...</div>
+            <div id="chart-area" style="display: none;">
+                <h2 id="chart-title"></h2>
+                <canvas id="chart" height="150"></canvas>
+            </div>
+
+            <!-- AI 对话页面 -->
+            <div id="chat-page" style="display: none;">
+                <div class="chat-container">
+                    <div class="chat-sidebar">
+                        <div class="chat-sidebar-header">
+                            <button onclick="newConversation()">+ 新建对话</button>
+                        </div>
+                        <div class="chat-conv-list" id="conv-list">
+                            <div class="chat-empty">加载中...</div>
+                        </div>
+                    </div>
+                    <div class="chat-main">
+                        <div class="chat-welcome" id="chat-welcome">
+                            <h2>👋 你好，我是 SmartOps AI 助手</h2>
+                            <p>我可以帮你分析服务器、排查故障、查询日志</p>
+                            <div class="template-grid">
+                                <div class="template-btn" onclick="quickAsk('检查所有服务器的运行状态')">📊 检查所有服务器状态</div>
+                                <div class="template-btn" onclick="quickAsk('分析最近的错误日志')">🔍 分析最近的错误日志</div>
+                                <div class="template-btn" onclick="quickAsk('总结一下当前的系统资源使用情况')">📈 系统资源使用情况</div>
+                                <div class="template-btn" onclick="quickAsk('最近有没有需要关注的告警')">🚨 当前告警汇总</div>
+                            </div>
+                        </div>
+                        <div class="chat-messages" id="chat-messages" style="display:none;"></div>
+                        <div class="chat-input-area" id="chat-input-area" style="display:none;">
+                            <input type="text" id="chat-input" placeholder="输入你的问题，回车发送">
+                            <button id="send-btn" onclick="sendMessage()">发送</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+        let currentPage = 'overview';
+
+        async function loadServers() {
+            const resp = await fetch('/api/servers');
+            const servers = await resp.json();
+
+            // 统计
+            const online = servers.filter(s => s.status === 'online').length;
+            const offline = servers.filter(s => s.status !== 'online').length;
+            const summaryHTML = `
+                <div class="summary">
+                    <div class="stat">🟢 在线: ${online}</div>
+                    <div class="stat">🔴 失联: ${offline}</div>
+                    <div class="stat">📊 总数: ${servers.length}</div>
+                </div>
+            `;
+
+            return { servers, summaryHTML };
+        }
+
+        async function showPage(page) {
+            currentPage = page;
+            document.getElementById("chart-area").style.display = "none";
+            document.getElementById("chat-page").style.display = "none";
+            const content = document.getElementById("content");
+
+            if (page === 'chat') {
+                content.innerHTML = '';
+                document.getElementById("chat-page").style.display = "block";
+                document.getElementById("page-title").style.display = "none";
+                document.querySelectorAll(".sidebar li").forEach(li => li.classList.remove("active"));
+                document.querySelector('.sidebar li[data-page="chat"]')?.classList.add("active");
+                showChat();
+                return;
+            }
+
+            content.innerHTML = "加载中...";
+
+            const { servers, summaryHTML } = await loadServers();
+
+            if (page === 'overview') {
+                showOverview(servers, summaryHTML);
+            } else if (page === 'alerts') {
+                showAlerts();
+            } else if (page === 'servers') {
+                showServers(servers);
+            } else if (page === 'trend') {
+                showTrendPage(servers);
+            }
+
+            // active 高亮 + 页面标题
+            document.querySelectorAll(".sidebar li").forEach(li => li.classList.remove("active"));
+            document.querySelector(`.sidebar li[data-page="${page}"]`)?.classList.add("active");
+            document.getElementById("page-title").style.display = "block";
+            document.getElementById("page-title").textContent = {
+                overview: '总览', alerts: '告警', servers: '服务器列表', trend: '趋势分析'
+            }[page];
+        }
+
+        function showOverview(servers, summaryHTML) {
+            if (servers.length === 0) {
+                document.getElementById("content").innerHTML = summaryHTML + `
+                    <div class="empty-state">
+                        <p>还没有服务器，添加一台开始监控</p>
+                        <button class="add-btn" onclick="showAddServer()">+ 添加服务器</button>
+                    </div>
+                `;
+                return;
+            }
+
+            const sorted = [...servers].sort((a, b) => {
+                if (a.status !== 'online') return -1;
+                if (b.status !== 'online') return 1;
+                return 0;
+            });
+
+            const listHtml = sorted.map(s => {
+                const isAbnormal = s.status !== 'online' || (s.cpu != null && s.cpu > 90);
+                const dot = s.status === 'online'
+                    ? '<span class="status-dot online"></span>'
+                    : '<span class="status-dot offline"></span>';
+                return `
+                    <div class="server-card${isAbnormal ? ' warning' : ''}" onclick="selectServerTrend('${s.name}')">
+                        <h3>${s.name}</h3>
+                        <p>${dot}${s.status === 'online' ? '在线' : '失联'}</p>
+                        <p>CPU: ${s.cpu ?? '-'}%</p>
+                        <p>内存: ${s.memory ?? '-'}%</p>
+                    </div>
+                `;
+            }).join("");
+            document.getElementById("content").innerHTML = summaryHTML + listHtml;
+        }
+
+        function showAlerts() {
+            document.getElementById('content').innerHTML = '<div style="width:100%;"><div class="alert-list"><div class="alert-item" style="justify-content:center;color:var(--text-muted);">加载中...</div></div></div>';
+            fetch('/api/alerts')
+                .then(r => r.json())
+                .then(alerts => {
+                    const open = alerts.filter(a => a.status === 'open').length;
+                    let html = '<div style="width:100%;">';
+                    if (open > 0) html += '<div class="alert-banner">🔴 ' + open + ' 条未处理告警</div>';
+                    if (alerts.length === 0) {
+                        html += '<div class="alert-list"><div class="alert-item" style="justify-content:center;color:var(--text-muted);">暂无告警</div></div>';
+                    } else {
+                        html += '<div class="alert-list">' + alerts.map(a => {
+                            const statusText = {open: '未处理', acknowledged: '已确认', resolved: '已解决'}[a.status] || a.status;
+                            const typeText = {offline: '离线', cpu: 'CPU', memory: '内存', disk: '磁盘'}[a.type] || a.type;
+                            return '<div class="alert-item">' +
+                                '<div class="alert-info">' +
+                                    '<div class="alert-title"><span class="alert-badge type-' + a.type + '">' + typeText + '</span> ' + a.message + '</div>' +
+                                    '<div class="alert-meta"><span>' + a.server_name + '</span><span class="alert-status ' + a.status + '">' + statusText + '</span><span>' + (a.created_at || '') + '</span></div>' +
+                                '</div>' +
+                                (a.status === 'open' || a.status === 'acknowledged' ?
+                                    '<div class="alert-actions">' +
+                                        (a.status === 'open' ? '<button onclick="updateAlert(' + a.id + ',\'acknowledged\')">确认</button>' : '') +
+                                        '<button onclick="updateAlert(' + a.id + ',\'resolved\')">解决</button>' +
+                                    '</div>' : '') +
+                            '</div>';
+                        }).join('') + '</div>';
+                    }
+                    html += '</div>';
+                    document.getElementById('content').innerHTML = html;
+                })
+                .catch(() => {
+                    document.getElementById('content').innerHTML = '<div style="width:100%;"><div class="alert-list"><div class="alert-item" style="justify-content:center;color:var(--red);">加载失败</div></div></div>';
+                });
+        }
+
+        function updateAlert(id, status) {
+            fetch('/api/alerts/' + id, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({status: status})
+            })
+            .then(r => r.json())
+            .then(data => { if (data.success) showAlerts(); })
+            .catch(() => {});
+        }
+
+        function showServers(servers) {
+            if (servers.length === 0) {
+                document.getElementById("content").innerHTML = `
+                    <div class="empty-state">
+                        <p>还没有服务器</p>
+                        <button class="add-btn" onclick="showAddServer()">+ 添加服务器</button>
+                    </div>
+                `;
+                return;
+            }
+
+            const rows = servers.map(s => {
+                const dot = s.status === 'online' ? '🟢' : '🔴';
+                const statusText = s.status === 'online' ? '在线' : '失联';
+                return `
+                    <tr>
+                        <td><strong>${s.name}</strong></td>
+                        <td>${s.ip || '-'}</td>
+                        <td>${s.os || '-'}</td>
+                        <td>${dot} ${statusText}</td>
+                        <td>${s.cpu ?? '-'}%</td>
+                        <td>${s.memory ?? '-'}%</td>
+                        <td>${s.disk ?? '-'}%</td>
+                        <td>${s.last_heartbeat ? s.last_heartbeat.slice(5, 16) : '-'}</td>
+                        <td><button class="del-btn" onclick="deleteServer('${s.name}')">✕</button></td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById("content").innerHTML = `
+                <div style="width:100%;">
+                    <div class="table-header">
+                        <span class="table-title">共 ${servers.length} 台服务器</span>
+                        <button class="add-btn" onclick="showAddServer()">+ 添加服务器</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="server-table">
+                            <thead>
+                                <tr>
+                                    <th>名称</th><th>IP</th><th>系统</th><th>状态</th>
+                                    <th>CPU</th><th>内存</th><th>磁盘</th><th>心跳</th><th></th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        let pendingServer = null;
+
+        function selectServerTrend(name) {
+            pendingServer = name;
+            showPage('trend');
+        }
+
+        function showTrendPage(servers) {
+            document.getElementById("chart-area").style.display = "none";
+
+            if (servers.length === 0) {
+                document.getElementById("content").innerHTML = '<div class="empty-state"><p>暂无服务器数据</p></div>';
+                return;
+            }
+
+            const options = servers.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+            document.getElementById("content").innerHTML = `
+                <div style="width:100%;">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                        <span style="font-size:14px; color:var(--text-muted);">服务器：</span>
+                        <select id="server-select" onchange="switchServerTrend(this.value)" class="server-select">
+                            ${options}
+                        </select>
+                    </div>
+                </div>
+            `;
+            const target = pendingServer || servers[0].name;
+            pendingServer = null;
+            // Select the right option in dropdown
+            setTimeout(() => {
+                const sel = document.getElementById('server-select');
+                if (sel) sel.value = target;
+            }, 0);
+            switchServerTrend(target);
+        }
+
+        function switchServerTrend(name) {
+            document.getElementById("chart-area").style.display = "block";
+            document.getElementById("chart-title").textContent = name + ' - 趋势';
+
+            if (chart) chart.destroy();
+            const canvas = document.getElementById("chart");
+
+            fetch('/api/servers/' + name + '/history')
+                .then(r => r.json())
+                .then(data => {
+                    const labels = data.map(d => d.time);
+                    const cpuData = data.map(d => d.cpu);
+                    const memData = data.map(d => d.memory);
+
+                    chart = new Chart(canvas, {
+                        type: "line",
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                { label: "CPU %", data: cpuData, borderColor: "#0ec8e6", backgroundColor: "rgba(14,200,230,0.1)", fill: true, tension: 0.3 },
+                                { label: "内存 %", data: memData, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.1)", fill: true, tension: 0.3 }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: { legend: { position: "top" } },
+                            scales: { y: { beginAtZero: true, max: 100 } }
+                        }
+                    });
+                })
+                .catch(() => {
+                    if (chart) chart.destroy();
+                    document.getElementById("chart-title").textContent = name + ' - 暂无数据';
+                });
+        }
+
+        async function showTrend(serverName) {
+            const resp = await fetch(`/api/servers/${serverName}/history`);
+            const data = await resp.json();
+
+            document.getElementById("chart-area").style.display = "block";
+            document.getElementById("chart-title").textContent = `${serverName} - 趋势`;
+
+            const labels = data.map(d => d.time);
+            const cpuData = data.map(d => d.cpu);
+            const memData = data.map(d => d.memory);
+
+            if (chart) chart.destroy();
+
+            chart = new Chart(document.getElementById("chart"), {
+                type: "line",
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: "CPU %", data: cpuData, borderColor: "#0ec8e6", backgroundColor: "rgba(14,200,230,0.1)", fill: true, tension: 0.3 },
+                        { label: "内存 %", data: memData, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.1)", fill: true, tension: 0.3 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: "top" } },
+                    scales: { y: { beginAtZero: true, max: 100 } }
+                }
+            });
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const btn = document.querySelector(".theme-btn");
+            if (html.dataset.theme === "dark") {
+                html.dataset.theme = "";
+                btn.textContent = "🌙";
+            } else {
+                html.dataset.theme = "dark";
+                btn.textContent = "☀️";
+            }
+        }
+
+        // 启动
+        showPage('overview');
+
+        // ════════════════════════════════════════════
+        // AI 对话
+        // ════════════════════════════════════════════
+
+        let currentConvId = null;
+
+        function showChat() {
+            currentConvId = null;
+            loadConversations();
+            document.getElementById("chat-welcome").style.display = "flex";
+            document.getElementById("chat-messages").style.display = "none";
+            document.getElementById("chat-input-area").style.display = "none";
+        }
+
+        function loadConversations() {
+            const list = document.getElementById("conv-list");
+            list.innerHTML = '<div class="chat-empty">加载中...</div>';
+            fetch('/api/conversations')
+                .then(r => r.json())
+                .then(convs => {
+                    if (convs.length === 0) {
+                        list.innerHTML = '<div class="chat-empty">暂无对话，新建一个开始吧</div>';
+                        return;
+                    }
+                    list.innerHTML = convs.map(c =>
+                        `<div class="conv-item${c.id === currentConvId ? ' active' : ''}" data-cid="${c.id}" onclick="selectConversation(${c.id})">
+                            <span class="conv-title">${escapeHtml(c.summary)}</span>
+                            <button class="conv-del" onclick="event.stopPropagation();deleteConversation(${c.id})">✕</button>
+                        </div>`
+                    ).join('');
+                })
+                .catch(() => {
+                    list.innerHTML = '<div class="chat-empty" style="color:var(--red);">加载失败</div>';
+                });
+        }
+
+        function newConversation() {
+            fetch('/api/conversations', { method: 'POST' })
+                .then(r => r.json())
+                .then(conv => selectConversation(conv.id));
+        }
+
+        function deleteConversation(id) {
+            if (!confirm('确定删除这个对话？')) return;
+            fetch(`/api/conversations/${id}`, { method: 'DELETE' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        if (currentConvId === id) {
+                            currentConvId = null;
+                            showChat();
+                        } else {
+                            loadConversations();
+                        }
+                    }
+                })
+                .catch(() => alert('删除失败'));
+        }
+
+        function selectConversation(id) {
+            currentConvId = id;
+            document.getElementById("chat-welcome").style.display = "none";
+            document.getElementById("chat-messages").style.display = "block";
+            document.getElementById("chat-input-area").style.display = "flex";
+            document.getElementById("chat-input").focus();
+
+            document.querySelectorAll(".conv-item").forEach(el => el.classList.remove("active"));
+            const active = document.querySelector(`.conv-item[data-cid="${id}"]`);
+            if (active) active.classList.add("active");
+
+            loadMessages(id);
+        }
+
+        function loadMessages(conversationId) {
+            const container = document.getElementById("chat-messages");
+            container.innerHTML = '<div class="chat-empty">加载中...</div>';
+
+            fetch(`/api/conversations/${conversationId}/messages`)
+                .then(r => r.json())
+                .then(msgs => {
+                    if (msgs.length === 0) {
+                        container.innerHTML = '<div class="chat-empty">新对话，开始提问吧</div>';
+                        return;
+                    }
+                    container.innerHTML = msgs.map(m =>
+                        `<div class="message ${m.role === 'human' ? 'user' : 'ai'}"><div class="msg-bubble">${
+                            m.role === 'human' ? escapeHtml(m.content) : renderMarkdown(m.content)
+                        }</div></div>`
+                    ).join('');
+                    scrollToBottom(container);
+                })
+                .catch(() => {
+                    container.innerHTML = '<div class="chat-empty" style="color:var(--red);">加载消息失败</div>';
+                });
+        }
+
+        function quickAsk(text) {
+            if (currentConvId) {
+                sendMessageText(text);
+            } else {
+                fetch('/api/conversations', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(conv => {
+                        currentConvId = conv.id;
+                        loadConversations();
+                        sendMessageText(text);
+                    });
+            }
+        }
+
+        function sendMessageText(text) {
+            document.getElementById("chat-welcome").style.display = "none";
+            document.getElementById("chat-messages").style.display = "block";
+            document.getElementById("chat-input-area").style.display = "flex";
+
+            const container = document.getElementById("chat-messages");
+            // 移除空状态提示
+            const empty = container.querySelector('.chat-empty');
+            if (empty) empty.remove();
+
+            container.innerHTML += `<div class="message user"><div class="msg-bubble">${escapeHtml(text)}</div></div>`;
+            container.innerHTML += `<div class="message ai" id="typing-msg"><div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div></div>`;
+            scrollToBottom(container);
+
+            const btn = document.getElementById("send-btn");
+            btn.disabled = true;
+
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ conversation_id: currentConvId, message: text })
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById("typing-msg")?.remove();
+                container.innerHTML += `<div class="message ai"><div class="msg-bubble">${renderMarkdown(data.reply)}</div></div>`;
+                scrollToBottom(container);
+                loadConversations();
+            })
+            .catch(() => {
+                document.getElementById("typing-msg")?.remove();
+                container.innerHTML += `<div class="message ai"><div class="msg-bubble" style="color:var(--red);">请求失败，请重试</div></div>`;
+            })
+            .finally(() => { btn.disabled = false; });
+        }
+
+        function sendMessage() {
+            const input = document.getElementById("chat-input");
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            sendMessageText(text);
+        }
+
+        function escapeHtml(t) {
+            const d = document.createElement('div');
+            d.textContent = t;
+            return d.innerHTML;
+        }
+
+        function renderMarkdown(text) {
+            let h = text
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+            h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+            h = h.replace(/### (.+)/g, '<h3>$1</h3>');
+            h = h.replace(/## (.+)/g, '<h2>$1</h2>');
+            h = h.replace(/# (.+)/g, '<h1>$1</h1>');
+            h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            h = h.replace(/\n\n/g, '</p><p>');
+            h = h.replace(/\n/g, '<br>');
+            if (!h.startsWith('<')) h = '<p>' + h + '</p>';
+            return h;
+        }
+
+        function scrollToBottom(el) {
+            setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
+        }
+
+        // ════════════════════════════════════════════
+        // 服务器管理
+        // ════════════════════════════════════════════
+
+        function showAddServer() {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.id = 'add-server-modal';
+            overlay.innerHTML = `
+                <div class="modal-box">
+                    <h3>添加服务器</h3>
+                    <label>服务器名称</label>
+                    <input id="sv-name" placeholder="例: web-01">
+                    <label>IP 地址</label>
+                    <input id="sv-ip" placeholder="例: 192.168.1.100">
+                    <label>SSH 用户名</label>
+                    <input id="sv-user" placeholder="root">
+                    <label>SSH 密码</label>
+                    <input id="sv-pass" type="password" placeholder="密码">
+                    <div class="modal-actions">
+                        <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">取消</button>
+                        <button class="btn-confirm" onclick="submitAddServer()">添加</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            setTimeout(() => document.getElementById('sv-name')?.focus(), 100);
+        }
+
+        function submitAddServer() {
+            const name = document.getElementById('sv-name').value.trim();
+            const ip = document.getElementById('sv-ip').value.trim();
+            const user = document.getElementById('sv-user').value.trim();
+            const password = document.getElementById('sv-pass').value.trim();
+            if (!name || !ip || !user || !password) {
+                alert('请填写所有字段');
+                return;
+            }
+
+            fetch('/api/servers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, ip, user, password })
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('add-server-modal')?.remove();
+                if (data.success || data.success === 'add success') {
+                    showPage(currentPage);
+                } else {
+                    alert(data.error || '添加失败');
+                }
+            })
+            .catch(() => alert('请求失败'));
+        }
+
+        function deleteServer(name) {
+            if (!confirm('确定删除服务器 ' + name + '？\n所有相关数据将被清除。')) return;
+            fetch('/api/servers/' + name, { method: 'DELETE' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        showPage(currentPage);
+                    } else {
+                        alert(data.error || '删除失败');
+                    }
+                })
+                .catch(() => alert('请求失败'));
+        }
+
+        // ════════════════════════════════════════════
+        // 自动刷新
+        // ════════════════════════════════════════════
+
+        setInterval(() => {
+            if (currentPage === 'overview' || currentPage === 'servers') {
+                fetch('/api/servers')
+                    .then(r => r.json())
+                    .then(servers => {
+                        const online = servers.filter(s => s.status === 'online').length;
+                        const offline = servers.filter(s => s.status !== 'online').length;
+                        const summaryHTML = `
+                            <div class="summary">
+                                <div class="stat">🟢 在线: ${online}</div>
+                                <div class="stat">🔴 失联: ${offline}</div>
+                                <div class="stat">📊 总数: ${servers.length}</div>
+                            </div>
+                        `;
+                        if (currentPage === 'overview') showOverview(servers, summaryHTML);
+                        else if (currentPage === 'servers') showServers(servers);
+                    })
+                    .catch(() => {}); // 静默失败，下次再试
+            }
+        }, 10000);
+    </script>
+</body>
+</html>

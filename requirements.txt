@@ -1,0 +1,9 @@
+requests
+pytest
+flask
+paramiko
+pyyaml
+chromadb
+openai
+langchain
+langchain-openai
