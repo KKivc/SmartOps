@@ -27,11 +27,11 @@
 
 | 页面 | 预览 |
 |---|---|
-| **总览** | <img src="screenshots/overview.png" width="2000"> |
-| **服务器管理** | <img src="screenshots/servers.png" width="2000"> |
-| **趋势图表** | <img src="screenshots/trend.png" width="2000"> |
-| **AI 对话** | <video src="screenshots/chat.mp4" width="360" autoplay loop muted></video> |
-| **告警** | <img src="screenshots/alerts.png" width="2000"> |
+| **总览** | <img src="screenshots/overview.png" width="800"> |
+| **服务器管理** | <img src="screenshots/servers.png" width="800"> |
+| **趋势图表** | <img src="screenshots/trend.png" width="800"> |
+| **AI 对话** | ![AI 对话演示](screenshots/chat-v2.gif) |
+| **告警** | <img src="screenshots/alerts.png" width="800"> |
 
 ## 技术栈
 
