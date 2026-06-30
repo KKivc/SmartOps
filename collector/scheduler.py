@@ -11,6 +11,7 @@ from store.db import get_session
 from store.models import Server, Metric, Log
 from collector.ssh_client import SSHClient
 from store.models import Alert
+from store.crypto import password_decrypt
 
 LOKI_URL = "http://localhost:3100/loki/api/v1/push"
 
@@ -25,7 +26,7 @@ def load_server():
             'host': s.ip,
             'port': '22',
             'user': s.user,
-            'password': s.password
+            'password': password_decrypt(s.password)
         })
     return data
     

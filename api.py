@@ -1,19 +1,13 @@
-from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template
 from store.db import init_db, get_session
-from store.models import Server, Metric, Probe, Log, Conversation, Message, Alert
+from store.models import Server, Metric, Log, Conversation, Message, Alert
 from datetime import datetime, timezone
 from llm import agent
+from collector.scheduler import start_scheduler
 from collector.ssh_client import SSHClient
-
-
-load_dotenv()
+from store.crypto import password_encrypt
 
 app = Flask(__name__)
-
-# 启动自动建表
-with app.app_context():
-    init_db()
 
 
 @app.route('/api/logs', methods=['POST'])
@@ -82,7 +76,7 @@ def add_server():
         name=name, 
         user=data.get('user'), 
         ip=data.get('ip'), 
-        password=data.get('password'),
+        password=password_encrypt(data.get('password')),
         status='offline'
         )
 
@@ -304,10 +298,13 @@ def query_conversation():
     reply = agent.chat(conversation_id, message)
     return jsonify({"reply": reply})
 
-from collector.scheduler import start_scheduler
-start_scheduler()
 
 if __name__ == '__main__':
+    # 启动自动建表
+    with app.app_context():
+        init_db()
+
+    start_scheduler()
     app.run(host="127.0.0.1", port=5001, debug=True)
     
 
