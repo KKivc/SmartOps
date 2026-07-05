@@ -6,3 +6,6 @@ data/
 screenshots/chat_original.mp4
 AGENTS.md
 日志.md
+
+# frontend
+frontend/node_modules/
