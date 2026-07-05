@@ -66,11 +66,11 @@ def query_logs(server_name: str, hours: int = 1, level: str = "") -> str:
     """查询指定服务器在给定时间范围内的日志
 
     Args:
-        server_name: 服务器名称（对应 Loki label `server`）
+        server_name: 服务器名称（对应 Loki label `host`）
         hours:       回溯小时数，默认 1
         level:       按日志级别过滤（debug / info / warn / error），空字符串不过滤
     """
-    query = f'{{server="{server_name}"}}'
+    query = f'{{host="{server_name}"}}'
     if level:
         query += f' |= "{level}"'
 
@@ -91,7 +91,7 @@ def analyze_errors(server_name: str, hours: int = 1) -> dict:
     Returns:
         {server_name, hours, total_errors, error_codes: {code: count, ...}}
     """
-    lines = _query_loki(f'{{server="{server_name}"}} |= "error"', hours, limit=500)
+    lines = _query_loki(f'{{host="{server_name}"}} |= "error"', hours, limit=500)
     codes = _parse_error_codes(lines)
 
     return {
@@ -115,7 +115,7 @@ def count_by_level(server_name: str, hours: int = 1) -> dict:
     """
     levels = {}
     for level in ("debug", "info", "warn", "error"):
-        lines = _query_loki(f'{{server="{server_name}"}} |= "{level}"', hours, limit=5000)
+        lines = _query_loki(f'{{host="{server_name}"}} |= "{level}"', hours, limit=5000)
         levels[level] = len(lines)
 
     total = sum(levels.values())
