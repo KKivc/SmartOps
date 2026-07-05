@@ -16,16 +16,22 @@ from store.crypto import password_decrypt
 
 
 def load_servers() -> list[dict]:
-    """从数据库加载服务器列表"""
+    """从数据库加载服务器列表，解密密码"""
     data = []
     session = get_session()
     for s in session.query(Server).all():
+        pwd = None
+        try:
+            if s.password:
+                pwd = password_decrypt(s.password)
+        except Exception as e:
+            print(f"  [{s.name}] 密码解密失败: {e}")
         data.append({
             "name": s.name,
             "host": s.ip,
-            "port": "22",
+            "port": 22,
             "user": s.user,
-            "password": password_decrypt(s.password) if s.password else None,
+            "password": pwd,
         })
     session.close()
     return data
@@ -52,7 +58,7 @@ def heartbeat_all():
                 user=cfg["user"],
                 password=cfg.get("password"),
             )
-            uptime = client.exec("uptime -p")
+            uptime = client.exec("echo ok")
             client.close()
 
             server.last_heartbeat = datetime.now(timezone.utc)
