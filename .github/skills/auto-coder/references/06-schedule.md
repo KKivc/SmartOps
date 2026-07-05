@@ -19,10 +19,10 @@
 
 | ID | 任务 | 依赖 | 状态 | 备注 |
 |----|------|------|------|------|
-| B1 | 创建 `llm/mcp/__init__.py` | — | ⬜ | 包入口 |
-| B2 | 实现 `llm/mcp/loki_mcp.py` | A1 | ⬜ | query_logs, analyze_errors |
+| B1 | 创建 `llm/mcp/__init__.py` | — | ✅ | 包入口 |
+| B2 | 实现 `llm/mcp/loki_mcp.py` | A1 | ✅ | query_logs, analyze_errors |
 | B3 | 实现 `llm/mcp/prometheus_mcp.py` | A4 | ⬜ | query_metric, range_query |
-| B4 | 更新 `.env` 增加云服务地址 | A1 | ⬜ | CLOUD_LOKI_URL, CLOUD_PROMETHEUS_URL |
+| B4 | 更新 `.env` 增加云服务地址 | A1 | ✅ | CLOUD_LOKI_URL, CLOUD_PROMETHEUS_URL |
 
 ## Phase 3：Agent 改造
 
@@ -47,5 +47,5 @@
 ## 当前进度
 
 **进行中：** ___
-**最近完成：** ✅ A1 — 云服务器部署 Loki + Prometheus docker-compose
-**阻塞项：** ___
+**最近完成：** ✅ B2 — 实现 Loki MCP 模块
+**阻塞项：** B3 依赖 A4 (被管服务器 node_exporter 配置)
