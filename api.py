@@ -6,6 +6,7 @@ from llm import agent
 from collector.scheduler import start_scheduler
 from collector.ssh_client import SSHClient
 from store.crypto import password_encrypt
+from llm.retriever import build_bm25_index
 
 app = Flask(__name__)
 
@@ -303,7 +304,9 @@ if __name__ == '__main__':
     # 启动自动建表
     with app.app_context():
         init_db()
-
+    # 启动 BM25 索引构建
+    build_bm25_index()
+    # 启动定时任务
     start_scheduler()
     app.run(host="127.0.0.1", port=5001, debug=True)
     

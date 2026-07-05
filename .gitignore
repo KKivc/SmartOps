@@ -4,3 +4,5 @@ __pycache__/
 data/
 .env
 screenshots/chat_original.mp4
+AGENTS.md
+日志.md

@@ -19,27 +19,28 @@
 
 | ID | 任务 | 依赖 | 状态 | 备注 |
 |----|------|------|------|------|
-| B1 | 创建 `llm/mcp/__init__.py` | — | ✅ | 包入口 |
-| B2 | 实现 `llm/mcp/loki_mcp.py` | A1 | ✅ | query_logs, analyze_errors |
-| B3 | 实现 `llm/mcp/prometheus_mcp.py` | A4 | ⬜ | query_metric, range_query |
+| B1 | 创建 `llm/mcp/__init__.py` | — | ✅ | 包入口，含延迟加载 + URL 常量 |
+| B2 | 实现 `llm/mcp/loki_mcp.py` | A1 | ✅ | query_logs, analyze_errors, count_by_level |
+| B3 | 实现 `llm/mcp/prometheus_mcp.py` | A4 | ✅ | query_metric, range_query, check_alerts |
 | B4 | 更新 `.env` 增加云服务地址 | A1 | ✅ | CLOUD_LOKI_URL, CLOUD_PROMETHEUS_URL |
 
 ## Phase 3：Agent 改造
 
 | ID | 任务 | 依赖 | 状态 | 备注 |
 |----|------|------|------|------|
-| C1 | 安装 langgraph | — | ⬜ | requirements.txt 更新 |
-| C2 | 实现 `llm/supervisor.py` StateGraph | B2, B3 | ⬜ | 循环调度 + Worker 路由 |
-| C3 | 实现 Worker tools（日志/指标/知识库） | C2 | ⬜ | llm/workers.py |
-| C4 | 改造 `llm/agent.py` 入口转发 Supervisor | C2 | ⬜ | 保持 chat() 签名不变 |
-| C5 | 实现 RCA 报告生成 | C2 | ⬜ | Supervisor 汇总输出 |
+| C1 | 安装 langgraph | — | ✅ | requirements.txt 更新 + 安装验证 |
+| C2 | 实现 `llm/supervisor.py` StateGraph | B2, B3 | ✅ | 循环调度 + Worker 路由 |
+| C3 | 实现 Worker tools（日志/指标/知识库） | C2 | ✅ | llm/workers.py |
+| C4 | 改造 `llm/agent.py` 入口转发 Supervisor | C2 | ✅ | 保持 chat() 签名不变 |
+| C5 | 实现 RCA 报告生成 | C2 | ✅ | Supervisor 汇总输出 |
 
 ## Phase 4：清理与测试
 
 | ID | 任务 | 依赖 | 状态 | 备注 |
 |----|------|------|------|------|
-| D1 | 精简 `llm/tools.py` 删除废弃工具 | C3 | ⬜ | get_logs, get_metrics_history |
-| D2 | 精简 SSH 采集器（仅保留心跳/离线检测） | C3 | ⬜ | collector/scheduler.py |
+| D1 | 精简 `llm/tools.py` 删除废弃工具 | C3 | ✅ | get_logs, get_metrics_history 已删；get_server_status 改查 Prometheus |
+| D2 | 精简 SSH 采集器（仅保留心跳/离线检测） | C3 | ✅ | collector/scheduler.py 只保留心跳 + 离线告警 |
+| D3 | 端到端测试 | C4, C5, D1, D2 | ✅ | 全链路导入验证通过 |
 | D3 | 端到端测试 | C4, C5, D1, D2 | ⬜ | 全链路 QA |
 
 ---
@@ -47,5 +48,5 @@
 ## 当前进度
 
 **进行中：** ___
-**最近完成：** ✅ B2 — 实现 Loki MCP 模块
-**阻塞项：** B3 依赖 A4 (被管服务器 node_exporter 配置)
+**最近完成：** ✅ D3 — 端到端测试通过
+**阻塞项：** ___

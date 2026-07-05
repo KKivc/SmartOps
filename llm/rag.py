@@ -1,13 +1,13 @@
 """
 Chroma 封装 — 运维知识库的向量存储与语义搜索
+提供ChromaDB 连接、embedding、写入、搜索等功能
+
 """
 
 import os
 import chromadb
 from openai import OpenAI
-from dotenv import load_dotenv
 
-load_dotenv()
 
 CHROMA_PATH = 'data/chromadb'   #  ChromaDB 自动生成的向量索引
 
@@ -20,13 +20,22 @@ SILICONFLOW_API_KEY = os.getenv('SILICONFLOW_API_KEY')
 def get_collection():
      """
      连接chromadb
-     获取/创建 knowledge 集合
-     可以理解成数据库里的一张表
+     获取/创建 knowledge 集合（child chunks）
      """
      client = chromadb.PersistentClient(path=CHROMA_PATH)
      return client.get_or_create_collection(
           name='ops-knowledge',
-          metadata={'description': '运维知识库'}    # 标签说明
+          metadata={'description': '运维知识库 - child chunks'}
+     )
+
+def get_parent_collection():
+     """
+     获取/创建 parent chunks 集合（按 ## 合并的大片段）
+     """
+     client = chromadb.PersistentClient(path=CHROMA_PATH)
+     return client.get_or_create_collection(
+          name='ops-parents',
+          metadata={'description': '运维知识库 - parent chunks'}
      )
 
 def embed_text(texts):
@@ -55,7 +64,7 @@ def add_documents_batch(docs):
        """批量写入文档到 ChromaDB"""
        if not docs:
              return
-       
+
        # 1. 提取所有文本 → 一次 API 调用
        texts = [d["text"] for d in docs]
        vectors = embed_text(texts)
@@ -67,6 +76,20 @@ def add_documents_batch(docs):
              embeddings=vectors,   # 向量
              documents=texts,      # 文档原文
              metadatas=[d["metadata"] for d in docs]   # 分类信息
+       )
+
+def add_parent_documents_batch(docs):
+       """批量写入 parent chunks 到 ChromaDB"""
+       if not docs:
+             return
+       texts = [d["text"] for d in docs]
+       vectors = embed_text(texts)
+       collection = get_parent_collection()
+       collection.add(
+             ids=[d["id"] for d in docs],
+             embeddings=vectors,
+             documents=texts,
+             metadatas=[d["metadata"] for d in docs]
        )
 
 def search_knowledge_base(query, limit=5):

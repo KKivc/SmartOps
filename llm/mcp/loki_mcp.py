@@ -1,165 +1,131 @@
-"""
-Loki MCP 封装 — 日志查询与异常分析。
+"""Loki MCP — 通过 HTTP API 查询日志
 
-通过 HTTP API 查询云服务器上的 Grafana Loki，
-提供日志检索、错误分析和级别统计功能。
+依赖环境变量 `CLOUD_LOKI_URL`（默认 http://localhost:3100）
+
+Functions (均暴露为 langchain tool):
+  - query_logs       按服务名查询日志
+  - analyze_errors   分析错误日志，统计错误码
+  - count_by_level   按日志级别统计数量
 """
 
 import re
 import time
+from collections import Counter
+
 import requests
-from datetime import datetime, timezone
-from typing import Optional
+from langchain_core.tools import tool
+
+from llm.mcp import CLOUD_LOKI_URL
+
+LOKI_API = f"{CLOUD_LOKI_URL}/loki/api/v1"
 
 
-class LokiMCPServer:
-    """Loki 日志服务 MCP 封装，进程内运行。"""
+def _range_params(hours: int) -> dict:
+    """生成 Loki query_range 公共时间参数（纳秒时间戳）"""
+    now = time.time()
+    return {
+        "start": int((now - hours * 3600)) * 1_000_000_000,
+        "end": int(now) * 1_000_000_000,
+    }
 
-    def __init__(self, url: str):
-        self.url = url.rstrip("/")
 
-    # ------------------------------------------------------------------
-    # MCP 工具定义
-    # ------------------------------------------------------------------
+def _query_loki(query: str, hours: int, limit: int = 100) -> list[str]:
+    """通用 Loki LogQL 查询，返回日志行列表"""
+    params = {"query": query, "limit": limit, **_range_params(hours)}
+    try:
+        resp = requests.get(f"{LOKI_API}/query_range", params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        raise RuntimeError(f"Loki 查询失败: {e}") from e
 
-    def get_tools(self) -> list[dict]:
-        """返回 MCP 风格的工具定义列表。"""
-        return [
-            {
-                "name": "query_logs",
-                "description": "查询 Loki 原始日志，支持按服务名、时间范围和级别过滤",
-                "parameters": {
-                    "server_name": {"type": "string", "description": "服务器名称"},
-                    "hours": {"type": "integer", "description": "查询范围（小时）", "default": 1},
-                    "level": {"type": "string", "description": "日志级别过滤", "default": ""},
-                    "keywords": {"type": "array", "description": "关键词过滤", "default": []},
-                },
-            },
-            {
-                "name": "analyze_errors",
-                "description": "分析错误日志：统计错误码分布、提取关键报错样本、时间分布",
-                "parameters": {
-                    "server_name": {"type": "string", "description": "服务器名称"},
-                    "hours": {"type": "integer", "description": "分析范围（小时）", "default": 1},
-                },
-            },
-            {
-                "name": "count_by_level",
-                "description": "按日志级别统计数量（error / warn / info）",
-                "parameters": {
-                    "server_name": {"type": "string", "description": "服务器名称"},
-                    "hours": {"type": "integer", "description": "统计范围（小时）", "default": 1},
-                },
-            },
-        ]
+    lines: list[str] = []
+    for stream in data.get("data", {}).get("result", []):
+        for _ts, log_line in stream.get("values", []):
+            lines.append(log_line)
+    return lines
 
-    # ------------------------------------------------------------------
-    # 工具实现
-    # ------------------------------------------------------------------
 
-    def query_logs(
-        self,
-        server_name: str,
-        hours: int = 1,
-        level: str = "",
-        keywords: Optional[list[str]] = None,
-    ) -> list[dict]:
-        """查询 Loki 原始日志。"""
-        query = f'{{server="{server_name}"}}'
-        if level:
-            query += f' |= "{level}"'
+def _parse_error_codes(lines: list[str]) -> dict:
+    """从日志行中提取 HTTP 状态码、异常类等错误码并统计"""
+    codes: Counter[str] = Counter()
+    for line in lines:
+        # HTTP 状态码
+        for m in re.finditer(r"\b(\d{3})\b", line):
+            code = m.group(1)
+            if 400 <= int(code) < 600:
+                codes[code] += 1
+        # Python 异常类
+        for m in re.finditer(r"(\w+(?:Error|Exception|Warning|Fault))", line):
+            codes[m.group(1)] += 1
+    return dict(codes.most_common(20))
 
-        params = {
-            "query": query,
-            "start": int((time.time() - hours * 3600)) * 1_000_000_000,
-            "end": int(time.time()) * 1_000_000_000,
-            "limit": 200,
-        }
 
-        try:
-            resp = requests.get(f"{self.url}/loki/api/v1/query_range", params=params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-        except requests.RequestException as e:
-            return [{"error": f"Loki 查询失败: {e}"}]
+@tool
+def query_logs(server_name: str, hours: int = 1, level: str = "") -> str:
+    """查询指定服务器在给定时间范围内的日志
 
-        logs = []
-        for stream in data.get("data", {}).get("result", []):
-            for ts, line in stream.get("values", []):
-                logs.append({
-                    "timestamp": datetime.fromtimestamp(int(ts) / 1e9, tz=timezone.utc).isoformat(),
-                    "content": line,
-                    "labels": stream.get("stream", {}),
-                })
+    Args:
+        server_name: 服务器名称（对应 Loki label `server`）
+        hours:       回溯小时数，默认 1
+        level:       按日志级别过滤（debug / info / warn / error），空字符串不过滤
+    """
+    query = f'{{server="{server_name}"}}'
+    if level:
+        query += f' |= "{level}"'
 
-        # 关键词过滤
-        if keywords:
-            filtered = []
-            for log in logs:
-                if any(kw.lower() in log["content"].lower() for kw in keywords):
-                    filtered.append(log)
-            return filtered
+    lines = _query_loki(query, hours)
+    if not lines:
+        return f"服务器 {server_name} 过去 {hours} 小时内无日志"
+    return "\n".join(lines)
 
-        return logs
 
-    def analyze_errors(self, server_name: str, hours: int = 1) -> dict:
-        """分析错误日志：统计、采样、时间分布。"""
-        logs = self.query_logs(server_name, hours=hours)
-        if not logs or "error" in logs[0]:
-            return {"error": "无日志数据", "server": server_name}
+@tool
+def analyze_errors(server_name: str, hours: int = 1) -> dict:
+    """分析指定服务器过去 N 小时的错误日志，返回错误码统计
 
-        # 筛选 error 级别
-        errors = [
-            log for log in logs
-            if "error" in log["content"].lower() or "fatal" in log["content"].lower()
-        ]
+    Args:
+        server_name: 服务器名称
+        hours:       回溯小时数，默认 1
 
-        # 提取错误码（如 500, 502, 503, 504）
-        error_codes = {}
-        for log in errors:
-            codes = re.findall(r"\b(50[0-9]|40[0-9]|30[0-2])\b", log["content"])
-            for code in codes:
-                error_codes[code] = error_codes.get(code, 0) + 1
+    Returns:
+        {server_name, hours, total_errors, error_codes: {code: count, ...}}
+    """
+    lines = _query_loki(f'{{server="{server_name}"}} |= "error"', hours, limit=500)
+    codes = _parse_error_codes(lines)
 
-        # 提取关键样本（最多 5 条）
-        samples = [e["content"] for e in errors[:5]]
+    return {
+        "server_name": server_name,
+        "hours": hours,
+        "total_errors": len(lines),
+        "error_codes": codes,
+    }
 
-        # 时间分布（按分钟聚合）
-        time_dist = {}
-        for e in errors:
-            minute = e["timestamp"][:16]
-            time_dist[minute] = time_dist.get(minute, 0) + 1
 
-        return {
-            "server": server_name,
-            "hours": hours,
-            "total_errors": len(errors),
-            "error_codes": error_codes,
-            "error_samples": samples,
-            "time_distribution": time_dist,
-        }
+@tool
+def count_by_level(server_name: str, hours: int = 1) -> dict:
+    """按日志级别统计指定服务器过去 N 小时的日志数量
 
-    def count_by_level(self, server_name: str, hours: int = 1) -> dict:
-        """按日志级别统计数量。"""
-        logs = self.query_logs(server_name, hours=hours)
-        if not logs or "error" in logs[0]:
-            return {"error": "无日志数据", "server": server_name}
+    Args:
+        server_name: 服务器名称
+        hours:       回溯小时数，默认 1
 
-        counts = {"error": 0, "warn": 0, "info": 0, "unknown": 0}
-        for log in logs:
-            content = log["content"].upper()
-            if "ERROR" in content or "FATAL" in content:
-                counts["error"] += 1
-            elif "WARN" in content or "WARNING" in content:
-                counts["warn"] += 1
-            elif "INFO" in content:
-                counts["info"] += 1
-            else:
-                counts["unknown"] += 1
+    Returns:
+        {server_name, hours, total, levels: {level: count}}
+    """
+    levels = {}
+    for level in ("debug", "info", "warn", "error"):
+        lines = _query_loki(f'{{server="{server_name}"}} |= "{level}"', hours, limit=5000)
+        levels[level] = len(lines)
 
-        return {
-            "server": server_name,
-            "hours": hours,
-            "counts": counts,
-            "total": sum(counts.values()),
-        }
+    total = sum(levels.values())
+    return {
+        "server_name": server_name,
+        "hours": hours,
+        "total": total,
+        "levels": levels,
+    }
+
+
+# langchain 可注册工具列表
+tools = [query_logs, analyze_errors, count_by_level]

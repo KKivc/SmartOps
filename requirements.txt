@@ -7,3 +7,7 @@ chromadb
 openai
 langchain
 langchain-openai
+langgraph
+rank_bm25
+jieba
+ragas
