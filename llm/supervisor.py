@@ -153,8 +153,10 @@ def _auto_report(results: dict) -> str:
 def log_worker_node(state: AgentState) -> dict:
     """日志 Worker 节点"""
     last_msg = state["messages"][-1].content if state["messages"] else ""
-    # 从用户消息中尝试提取服务器名
     server_name = _extract_server(last_msg)
+    if not server_name:
+        return {"intermediate_results": {**state.get("intermediate_results", {}), "log_worker": {"info": "未指定服务器，跳过日志查询"}},
+                "iteration": state.get("iteration", 0) + 1}
 
     try:
         result = log_worker(server_name)
@@ -170,6 +172,21 @@ def infra_worker_node(state: AgentState) -> dict:
     """基础设施 Worker 节点"""
     last_msg = state["messages"][-1].content if state["messages"] else ""
     server_name = _extract_server(last_msg)
+    if not server_name:
+        # 未指定服务器时，查第一台在线的
+        try:
+            from store.db import get_session
+            from store.models import Server as ServerModel
+            session = get_session()
+            first = session.query(ServerModel).filter_by(status="online").first()
+            session.close()
+            if first:
+                server_name = first.name
+        except Exception:
+            server_name = None
+    if not server_name:
+        return {"intermediate_results": {**state.get("intermediate_results", {}), "infra_worker": {"info": "无可用服务器，跳过指标查询"}},
+                "iteration": state.get("iteration", 0) + 1}
 
     try:
         result = infra_worker(server_name)
@@ -194,14 +211,17 @@ def knowledge_worker_node(state: AgentState) -> dict:
     }
 
 
-def _extract_server(text: str) -> str:
-    """从用户输入中尝试提取服务器名，兜底返回 'unknown'"""
+def _extract_server(text: str) -> str | None:
+    """从用户输入中尝试提取服务器名，找不到返回 None"""
     if not text:
-        return "unknown"
-    # 简单启发式：找 server/服务器 后的词
+        return None
+    # 先查 "server: xxx" 或 "服务器 xxx" 模式
     import re
-    m = re.search(r"(?:server|服务器|主机)[s:]?\s*(\S+)", text, re.IGNORECASE)
-    return m.group(1) if m else "unknown"
+    m = re.search(r"(?:server|服务器|主机)\s*[:：]?\s*(\S+)", text, re.IGNORECASE)
+    if m:
+        name = m.group(1).strip("，。、")
+        return name
+    return None
 
 
 def should_continue(state: AgentState) -> Literal["continue", "end"]:

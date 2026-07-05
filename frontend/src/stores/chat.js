@@ -55,6 +55,8 @@ export const useChatStore = defineStore('chat', {
       try {
         const data = await api.sendMessage(this.currentConvId, text)
         this.messages.push({ role: 'ai', content: data.reply })
+        // 发送成功后刷新对话列表（后端已更新摘要）
+        await this.fetchConversations()
       } catch (e) {
         // 发送失败，回滚乐观消息
         this.messages = this.messages.filter((m) => m !== tempMsg)
