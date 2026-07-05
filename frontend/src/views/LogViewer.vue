@@ -37,13 +37,12 @@
     <div v-else-if="!loading && logs.length === 0" class="empty-bar">过去 {{ hours }} 小时无日志</div>
 
     <Loading v-if="loading" type="skeleton" :count="8" :height="32" />
-    <div v-else-if="logs.length" ref="logContainer" class="log-list" @scroll="onScroll">
+    <div v-else-if="logs.length" class="log-list">
       <div v-for="(log, i) in logs" :key="i" class="log-item" :class="getLevel(log)">
         <span class="log-time">{{ log.timestamp?.slice(11, 19) || '' }}</span>
         <span class="log-level" :class="getLevel(log)">{{ getLevel(log).toUpperCase() }}</span>
         <span class="log-content">{{ log.content }}</span>
       </div>
-      <div v-if="hasMore" ref="sentinel" class="load-more">加载更多...</div>
     </div>
   </div>
 </template>
@@ -75,10 +74,9 @@ const logs = ref([])
 const stats = ref(null)
 const loading = ref(false)
 const error = ref('')
-const hasMore = ref(true)
-let page = 1
 
 function getLevel(log) {
+  if (log.level) return log.level
   const c = (log.content || '').toLowerCase()
   if (c.includes('error') || c.includes('fatal')) return 'error'
   if (c.includes('warn')) return 'warn'
@@ -87,7 +85,7 @@ function getLevel(log) {
 
 async function search(reset = true) {
   if (!serverName.value) return
-  if (reset) { logs.value = []; page = 1; hasMore.value = true }
+  if (reset) { logs.value = [] }
   loading.value = true
   error.value = ''
   try {
@@ -99,7 +97,6 @@ async function search(reset = true) {
     ])
     if (Array.isArray(logData)) {
       logs.value = reset ? logData : [...logs.value, ...logData]
-      hasMore.value = logData.length >= 100
     }
     stats.value = statsData
   } catch (e) {
@@ -113,14 +110,6 @@ let debounceTimer = null
 function debouncedSearch() {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => search(true), 300)
-}
-
-function onScroll(e) {
-  const el = e.target
-  if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMore.value && !loading.value) {
-    page++
-    search(false)
-  }
 }
 
 onMounted(async () => {

@@ -15,6 +15,8 @@ export const useChatStore = defineStore('chat', {
       this.convLoading = true
       try {
         this.conversations = await api.getConversations()
+      } catch {
+        this.conversations = []
       } finally {
         this.convLoading = false
       }
@@ -47,11 +49,16 @@ export const useChatStore = defineStore('chat', {
         this.currentConvId = conv.id
       }
       this.sending = true
-      // 追加用户消息到本地
-      this.messages.push({ role: 'human', content: text })
+      // 追加用户消息到本地（带唯一 key 支持 Vue 渲染）
+      const tempMsg = { role: 'human', content: text, _key: Date.now() + '_' + Math.random() }
+      this.messages.push(tempMsg)
       try {
         const data = await api.sendMessage(this.currentConvId, text)
         this.messages.push({ role: 'ai', content: data.reply })
+      } catch (e) {
+        // 发送失败，回滚乐观消息
+        this.messages = this.messages.filter((m) => m !== tempMsg)
+        throw e // 让调用方捕获
       } finally {
         this.sending = false
       }

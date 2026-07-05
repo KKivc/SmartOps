@@ -1,8 +1,7 @@
 from store.db import get_session
-from store.models import Server
+from store.models import Server, Metric
 from langchain_core.tools import tool
 from llm.retriever import hybrid_search as kb_search
-from llm.mcp.prometheus_mcp import query_metric
 
 
 @tool
@@ -29,24 +28,26 @@ def get_server_list():
 @tool
 def get_server_status(server_name: str):
     """
-    查询指定服务器的最新状态指标（从 Prometheus 获取）
+    查询指定服务器的最新状态指标（从 PostgreSQL 获取百分比值）
     """
     session = get_session()
     server = session.query(Server).filter_by(name=server_name).first()
-    session.close()
-
     if not server:
+        session.close()
         return {"error": f"{server_name} not found"}
 
-    # 从 Prometheus 查实时指标
-    cpu = query_metric.invoke({"metric_name": "node_cpu_seconds_total", "server_ip": server.ip})
-    memory = query_metric.invoke({"metric_name": "node_memory_MemAvailable_bytes", "server_ip": server.ip})
+    # 从 Metric 表取最新一条（已有百分比值）
+    metric = session.query(Metric).filter_by(
+        server_id=server.id
+    ).order_by(Metric.id.desc()).first()
+    session.close()
 
     return {
         "server_name": server.name,
         "server_ip": server.ip,
-        "cpu": cpu.get("results", []),
-        "memory": memory.get("results", []),
+        "cpu": metric.cpu if metric else None,
+        "memory": metric.memory if metric else None,
+        "disk": metric.disk if metric else None,
     }
 
 

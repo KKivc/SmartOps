@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request, jsonify, render_template
 from store.db import init_db, get_session
-from store.models import Server, Metric, Log, Conversation, Message, Alert
+from store.models import Server, Metric, Log, Probe, Conversation, Message, Alert
 from datetime import datetime, timezone
 from llm import agent
 from collector.scheduler import start_scheduler
@@ -130,6 +130,12 @@ def delete_server(name):
     if not server:
         session.close()
         return jsonify({"error": "server not found"}), 404
+
+    # 先删关联的子记录（外键无 CASCADE）
+    session.query(Metric).filter(Metric.server_id == server.id).delete()
+    session.query(Log).filter(Log.server_id == server.id).delete()
+    session.query(Probe).filter(Probe.server_id == server.id).delete()
+
     session.delete(server)
     session.commit()
     session.close()
@@ -305,10 +311,21 @@ def query_conversation():
 
 @app.route('/api/logs/query', methods=['POST'])
 def query_logs_direct():
-    """前端直接查 Loki（绕过 Agent），供日志查看页使用"""
+    """前端直接查 Loki（绕过 Agent），返回结构化日志行列表"""
     data = request.get_json()
     from llm.mcp.loki_mcp import query_logs
-    return jsonify(query_logs.invoke(data))
+    raw = query_logs.invoke(data)
+    # query_logs 返回的可能是 str（空日志消息或 "\n" 拼接的行）
+    if isinstance(raw, str):
+        lines = raw.split("\n") if "\n" in raw else []
+        # 过滤掉空结果提示信息
+        if not lines:
+            return jsonify([])
+        return jsonify([
+            {"content": line, "timestamp": "", "level": ""}
+            for line in lines if line.strip()
+        ])
+    return jsonify([])
 
 
 @app.route('/api/logs/analyze', methods=['POST'])
@@ -325,6 +342,14 @@ def metrics_current():
     data = request.get_json()
     from llm.mcp.prometheus_mcp import query_metric
     return jsonify(query_metric.invoke(data))
+
+
+# Vue Router 支持：所有非 API / 非 static 路径返回 index.html
+@app.route('/<path:path>')
+def spa_fallback(path):
+    if path.startswith('api/') or path.startswith('static/'):
+        return jsonify({"error": "not found"}), 404
+    return render_template('index.html')
 
 
 if __name__ == '__main__':

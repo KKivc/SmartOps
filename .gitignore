@@ -9,3 +9,6 @@ AGENTS.md
 
 # frontend
 frontend/node_modules/
+
+# build artifacts
+static/
