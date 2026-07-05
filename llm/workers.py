@@ -36,6 +36,7 @@ def infra_worker(server_name: str, server_ip: str = "") -> dict:
     result = {
         "server_name": server_name,
         "server_ip": server_ip or "all",
+        "data_available": False,
     }
 
     # 用 PromQL 查百分比值
@@ -50,7 +51,8 @@ def infra_worker(server_name: str, server_ip: str = "") -> dict:
             val = query_metric.invoke({"promql": promql, "server_ip": server_ip})
             results = val.get("results", [])
             if results:
-                result[key] = float(results[0].get("value", 0))
+                result[key] = round(float(results[0].get("value", 0)), 1)
+                result["data_available"] = True
             else:
                 result[key] = None
         except Exception as e:

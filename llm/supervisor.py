@@ -97,14 +97,27 @@ def supervisor_node(state: AgentState) -> dict:
 
 
 def _summarize_results(results: dict) -> str:
-    """将 intermediate_results 简化为描述文本"""
+    """将 intermediate_results 简化为带关键数值的描述文本"""
     if not results:
         return ""
     parts = []
     for worker, data in results.items():
         if isinstance(data, dict):
-            keys = list(data.keys())[:5]
-            parts.append(f"{worker}: {{{', '.join(keys)}}}")
+            # 提取关键数值字段，忽略 metadata 字段
+            vals = []
+            for k, v in data.items():
+                if v is None or k in ("server_name", "server_ip"):
+                    continue
+                if isinstance(v, (int, float)):
+                    vals.append(f"{k}={v:.1f}" if isinstance(v, float) else f"{k}={v}")
+                elif isinstance(v, str) and v:
+                    vals.append(f"{k}={v[:30]}")
+                elif isinstance(v, bool):
+                    vals.append(f"{k}={v}")
+            if vals:
+                parts.append(f"{worker}: {', '.join(vals)}")
+            else:
+                parts.append(f"{worker}: 无数据")
         else:
             parts.append(f"{worker}: {str(data)[:100]}")
     return "; ".join(parts)
@@ -112,17 +125,28 @@ def _summarize_results(results: dict) -> str:
 
 def _auto_report(results: dict) -> str:
     """当 LLM 未生成 report 时的兜底报告"""
-    lines = ["# RCA 报告（自动生成）", ""]
+    lines = ["# 诊断报告", ""]
     for worker, data in results.items():
-        lines.append(f"## {worker}")
+        lines.append(f"## {worker.replace('_', ' ').title()}")
         if isinstance(data, dict):
-            for k, v in data.items():
-                val = str(v)[:200]
-                lines.append(f"- {k}: {val}")
+            if data.get("data_available") is False:
+                lines.append("- Prometheus 暂无指标数据，请确认 node_exporter 已安装")
+            elif data.get("error"):
+                lines.append(f"- 错误: {data['error']}")
+            else:
+                for k, v in data.items():
+                    if k in ("server_name", "server_ip", "data_available"):
+                        continue
+                    if v is None:
+                        lines.append(f"- {k}: 无数据")
+                    elif isinstance(v, (int, float)):
+                        lines.append(f"- {k}: {v:.1f}%")
+                    else:
+                        lines.append(f"- {k}: {str(v)[:200]}")
         else:
             lines.append(f"- {str(data)[:200]}")
     lines.append("")
-    lines.append("_报告由 Supervisor 自动汇总_")
+    lines.append("_报告由 Supervisor 自动生成_")
     return "\n".join(lines)
 
 
