@@ -345,12 +345,11 @@ def query_logs_direct():
     data = request.get_json()
     from llm.mcp.loki_mcp import query_logs
     raw = query_logs.invoke(data)
-    # query_logs 返回的可能是 str（空日志消息或 "\n" 拼接的行）
+    # query_logs 返回字符串：无数据时是提示语，有数据时是 "\n" 拼接的行
     if isinstance(raw, str):
-        lines = raw.split("\n") if "\n" in raw else []
-        # 过滤掉空结果提示信息
-        if not lines:
-            return jsonify([])
+        if raw.startswith("服务器") or raw.startswith("无日志"):
+            return jsonify([])  # 真实无数据，不渲染
+        lines = raw.split("\n")
         return jsonify([
             {"content": line, "timestamp": "", "level": ""}
             for line in lines if line.strip()
