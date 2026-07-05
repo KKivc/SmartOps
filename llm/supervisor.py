@@ -233,6 +233,11 @@ def should_continue(state: AgentState) -> Literal["continue", "end"]:
     return "continue"
 
 
+def finish_node(state: AgentState) -> dict:
+    """结束节点 — 确保 final_report 进入最终状态"""
+    return {"final_report": state.get("final_report", "") or _auto_report(state.get("intermediate_results", {}))}
+
+
 def build_supervisor() -> StateGraph:
     """构建并返回 Supervisor StateGraph"""
     graph = StateGraph(AgentState)
@@ -242,6 +247,7 @@ def build_supervisor() -> StateGraph:
     graph.add_node("log_worker", log_worker_node)
     graph.add_node("infra_worker", infra_worker_node)
     graph.add_node("knowledge_worker", knowledge_worker_node)
+    graph.add_node("finish", finish_node)
 
     # 入口 → Supervisor
     graph.set_entry_point("supervisor")
@@ -254,7 +260,7 @@ def build_supervisor() -> StateGraph:
             "log_worker": "log_worker",
             "infra_worker": "infra_worker",
             "knowledge_worker": "knowledge_worker",
-            "FINISH": END,
+            "FINISH": "finish",
         },
     )
 
@@ -263,7 +269,10 @@ def build_supervisor() -> StateGraph:
         graph.add_conditional_edges(
             worker,
             should_continue,
-            {"continue": "supervisor", "end": END},
+            {"continue": "supervisor", "end": "finish"},
         )
+
+    # finish → END
+    graph.add_edge("finish", END)
 
     return graph.compile()
