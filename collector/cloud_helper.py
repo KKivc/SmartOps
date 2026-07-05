@@ -76,8 +76,13 @@ scrape_configs:
         key = os.getenv("CLOUD_SSH_KEY_PATH")
         if pwd:
             connect_kwargs["password"] = pwd
+            connect_kwargs["look_for_keys"] = False
+            connect_kwargs["allow_agent"] = False
         elif key:
             connect_kwargs["key_filename"] = key
+        else:
+            logger.warning("CLOUD_SSH_PASSWORD 或 CLOUD_SSH_KEY_PATH 均未设置")
+            return False
 
         ssh.connect(**connect_kwargs)
 
