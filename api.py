@@ -120,7 +120,10 @@ def add_server():
         session.close()
         return jsonify({ "error": "SSH 连接失败，请检查用户名和密码"})
 
-    return jsonify({"success": "add success"})
+    return jsonify({
+        "success": "add success",
+        "prometheus": "如需监控指标，请在云服务器上配置 node_exporter 抓取。"
+    })
 
 @app.route('/api/servers/<name>', methods=['DELETE'])
 def delete_server(name):
@@ -342,6 +345,24 @@ def metrics_current():
     data = request.get_json()
     from llm.mcp.prometheus_mcp import query_metric
     return jsonify(query_metric.invoke(data))
+
+
+@app.route('/api/prometheus/targets')
+def prometheus_targets():
+    """返回 Prometheus HTTP SD 格式的 node_exporter 抓取目标列表"""
+    session = get_session()
+    servers = session.query(Server).filter_by(status='online').all()
+    session.close()
+
+    targets = []
+    for s in servers:
+        if s.ip:
+            targets.append({
+                "targets": [f"{s.ip}:9100"],
+                "labels": {"server": s.name},
+            })
+
+    return jsonify(targets)
 
 
 # Vue Router 支持：所有非 API / 非 static 路径返回 index.html

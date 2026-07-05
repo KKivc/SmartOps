@@ -1,5 +1,6 @@
 # SmartOps Prometheus 配置
-# 云服务器部署，被管服务器 node_exporter 将通过 remote_write 或拉取方式接入
+# 云服务器部署，被管服务器 node_exporter 通过 HTTP SD 自动发现
+# 运行 `scripts/sync-prometheus-targets.sh` 更新抓取目标
 
 global:
   scrape_interval: 15s
@@ -10,7 +11,20 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # node_exporter 将被管服务器注册后自动加入
-  # - job_name: "node_exporter"
-  #   static_configs:
-  #     - targets: ["host:9100"]
+  # node_exporter 抓取目标
+  # 方式一：自动同步（推荐）
+  # 在云服务器上运行:
+  #   curl -s http://<本地FlaskIP>:5001/api/prometheus/targets \
+  #     | tee /etc/prometheus/targets/node.json
+  # 并配置 file_sd_configs:
+  # - job_name: "node"
+  #   file_sd_configs:
+  #     - files: ["/etc/prometheus/targets/*.json"]
+  #       refresh_interval: 30s
+
+  # 方式二：手动指定（测试用）
+  - job_name: "node"
+    static_configs:
+      - targets:
+        # 添加被管服务器: "IP:9100"
+        # - "10.0.0.1:9100"
