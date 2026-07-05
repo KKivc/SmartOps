@@ -1,52 +1,48 @@
-# Implementation Schedule — SmartOps 多 Agent + MCP
+# Implementation Schedule
 
-> 来源：`docs/superpowers/specs/2026-07-05-smartops-multi-agent-mcp-design.md`
-> 实施计划：`docs/superpowers/plans/2026-07-05-smartops-multi-agent-mcp-plan.md`
-> 状态标记：⬜ 未开始 · 🔶 进行中 · ✅ 已完成 · ❌ 阻塞
+状态标记：
+- ⬜ 未开始
+- 🔶 进行中
+- ✅ 已完成
+- ❌ 阻塞
 
 ---
 
-## Phase 1：基础设施部署
+## Phase 1: 前端 Vue 迁移 (完成)
 
 | ID | 任务 | 依赖 | 状态 | 备注 |
 |----|------|------|------|------|
-| A1 | 云服务器部署 Loki + Prometheus docker-compose | — | ✅ | docker-compose.yml 已更新 |
-| A2 | 被管服务器安装 promtail + 配置日志推送 | A1 | ⬜ | 指向云服务器 Loki |
-| A3 | 被管服务器安装 node_exporter | — | ⬜ | |
-| A4 | 配置 Prometheus 抓取 node_exporter | A3 | ⬜ | |
+| F1 | Frontend Project Scaffold | — | ✅ | Vite + Vue 3 + Router + Placeholders |
+| F2 | API Layer and Pinia Stores | F1 | ✅ | api/index.js + 3 stores |
+| F3 | Common + Layout Components | F1 | ✅ | StatusDot, Loading, Modal, Sidebar, ThemeToggle |
+| F4 | Chart Components | F1 | ✅ | MetricGauge, TrendChart (Chart.js) |
+| F5 | Overview + Servers Pages | F2, F3, F4 | ✅ | 含添加/删除服务器 Modal |
+| F6 | Alerts Page | F2, F3 | ✅ | AlertItem + 自动恢复标示 |
+| F7 | Trend Page | F2, F3, F4 | ✅ | 多指标选择 + 时间范围 |
+| F8 | Chat Page + RCA Components | F2, F3 | ✅ | 对话列表 + MessageBubble + RcaReport |
+| F9 | LogViewer Page | F2, F3 | ✅ | Loki 查询 + 统计 + 无限滚动 |
+| F10 | Backend API + Alert Auto-Resolve | — | ✅ | 3 个新端点 + scheduler.py 自动恢复 |
+| F11 | Flask Serve Vue Build | F1-F10 | ✅ | postbuild.js 集成 |
 
-## Phase 2：MCP 封装层
-
-| ID | 任务 | 依赖 | 状态 | 备注 |
-|----|------|------|------|------|
-| B1 | 创建 `llm/mcp/__init__.py` | — | ✅ | 包入口，含延迟加载 + URL 常量 |
-| B2 | 实现 `llm/mcp/loki_mcp.py` | A1 | ✅ | query_logs, analyze_errors, count_by_level |
-| B3 | 实现 `llm/mcp/prometheus_mcp.py` | A4 | ✅ | query_metric, range_query, check_alerts |
-| B4 | 更新 `.env` 增加云服务地址 | A1 | ✅ | CLOUD_LOKI_URL, CLOUD_PROMETHEUS_URL |
-
-## Phase 3：Agent 改造
+## Phase 2: 多模态知识注入
 
 | ID | 任务 | 依赖 | 状态 | 备注 |
 |----|------|------|------|------|
-| C1 | 安装 langgraph | — | ✅ | requirements.txt 更新 + 安装验证 |
-| C2 | 实现 `llm/supervisor.py` StateGraph | B2, B3 | ✅ | 循环调度 + Worker 路由 |
-| C3 | 实现 Worker tools（日志/指标/知识库） | C2 | ✅ | llm/workers.py |
-| C4 | 改造 `llm/agent.py` 入口转发 Supervisor | C2 | ✅ | 保持 chat() 签名不变 |
-| C5 | 实现 RCA 报告生成 | C2 | ✅ | Supervisor 汇总输出 |
+| M1 | 图片自动描述管线 | — | ⬜ | 知识库文档中的图片 → LLM 描述 → 索引 |
+| M2 | 多模态检索增强 | M1 | ⬜ | 图文混合检索 |
 
-## Phase 4：清理与测试
+## Phase 3: Agent 增强
 
 | ID | 任务 | 依赖 | 状态 | 备注 |
 |----|------|------|------|------|
-| D1 | 精简 `llm/tools.py` 删除废弃工具 | C3 | ✅ | get_logs, get_metrics_history 已删；get_server_status 改查 Prometheus |
-| D2 | 精简 SSH 采集器（仅保留心跳/离线检测） | C3 | ✅ | collector/scheduler.py 只保留心跳 + 离线告警 |
-| D3 | 端到端测试 | C4, C5, D1, D2 | ✅ | 全链路导入验证通过 |
-| D3 | 端到端测试 | C4, C5, D1, D2 | ⬜ | 全链路 QA |
+| A1 | 运维日报 Agent | — | ⬜ | 定时分析趋势与告警，生成日报 |
+| A2 | 自动故障修复 Agent | — | ⬜ | Agent 调用 SSH 工具自动修复 |
+| A3 | 多 Agent 协同分析 | A1, A2 | ⬜ | 编排多个 Agent 联合排查 |
 
 ---
 
 ## 当前进度
 
-**进行中：** ___
-**最近完成：** ✅ D3 — 端到端测试通过
-**阻塞项：** ___
+**进行中：** (无)
+**最近完成：** 全部 11 个前端迁移任务已完成
+**阻塞项：** (无)
