@@ -58,8 +58,27 @@ def chat(conversation_id: int, user_input: str) -> str:
     # 5. 调用 Supervisor
     try:
         final_state = _supervisor.invoke(initial_state)
-        result = final_state.get("final_report") or "无法生成诊断报告"
+        result = final_state.get("final_report", "")
+        # 如果 final_report 为空，尝试从 intermediate_results 生成回复
+        if not result:
+            ir = final_state.get("intermediate_results", {})
+            if ir:
+                from llm.supervisor import _auto_report
+                result = _auto_report(ir)
+            else:
+                # Supervisor 未调度任何 Worker，直接用 LLM 回答
+                from langchain_openai import ChatOpenAI
+                import os
+                llm = ChatOpenAI(
+                    model="deepseek-v4-flash",
+                    base_url="https://opencode.ai/zen/go/v1",
+                    api_key=os.getenv("OPENCODE_API_KEY"),
+                )
+                resp = llm.invoke([("human", user_input)])
+                result = resp.content
     except Exception as e:
+        import traceback
+        print(f"[agent] 诊断异常: {e}\n{traceback.format_exc()}", flush=True)
         result = f"【系统错误】诊断过程异常：{e}"
 
     # 6. 保存 AI 回答
