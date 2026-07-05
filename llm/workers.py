@@ -31,21 +31,30 @@ def infra_worker(server_name: str, server_ip: str = "") -> dict:
     """基础设施 Worker — 查 Prometheus 指标 + 告警
 
     Returns:
-        {server_name, metrics: {metric: value}, alerts, ...}
+        {server_name, cpu_percent, memory_percent, disk_percent, alerts}
     """
     result = {
         "server_name": server_name,
         "server_ip": server_ip or "all",
     }
 
-    # 查 CPU、内存、磁盘等核心指标
-    for metric in ("node_cpu_seconds_total", "node_memory_MemAvailable_bytes",
-                   "node_filesystem_size_bytes"):
+    # 用 PromQL 查百分比值
+    promql_queries = {
+        "cpu_percent": f'100 - (avg by(instance)(rate(node_cpu_seconds_total{{mode="idle"}}[1m])) * 100)',
+        "memory_percent": f'(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100',
+        "disk_percent": f'(1 - node_filesystem_free_bytes / node_filesystem_size_bytes) * 100',
+    }
+
+    for key, promql in promql_queries.items():
         try:
-            val = query_metric.invoke({"metric_name": metric, "server_ip": server_ip})
-            result[metric] = val.get("results", [])
+            val = query_metric.invoke({"promql": promql, "server_ip": server_ip})
+            results = val.get("results", [])
+            if results:
+                result[key] = float(results[0].get("value", 0))
+            else:
+                result[key] = None
         except Exception as e:
-            result[metric] = {"error": str(e)}
+            result[key] = {"error": str(e)}
 
     # 查告警
     try:

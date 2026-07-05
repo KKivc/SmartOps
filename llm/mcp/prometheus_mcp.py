@@ -27,17 +27,21 @@ def _instance_filter(server_ip: str) -> str:
 
 
 @tool
-def query_metric(metric_name: str, server_ip: str = "") -> dict:
+def query_metric(metric_name: str = "", server_ip: str = "", promql: str = "") -> dict:
     """即时查询 Prometheus 指标当前值
 
     Args:
         metric_name: 指标名称，如 `node_cpu_seconds_total`
         server_ip:   服务器 IP（可选），传空则查所有实例
+        promql:      完整 PromQL 表达式（设置后忽略 metric_name）
 
     Returns:
         {metric, server_ip, timestamp, results: [{instance, value, ...}]}
     """
-    query = metric_name + _instance_filter(server_ip)
+    if promql:
+        query = promql
+    else:
+        query = metric_name + _instance_filter(server_ip)
     try:
         resp = requests.get(
             f"{PROM_API}/query",

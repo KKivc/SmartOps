@@ -24,7 +24,6 @@ def load_servers() -> list[dict]:
         try:
             if s.password:
                 pwd = password_decrypt(s.password)
-                print(f"  [{s.name}] 密码解密成功 ({len(pwd)} 字符)", flush=True)
         except Exception as e:
             print(f"  [{s.name}] 密码解密失败: {e}", flush=True)
         data.append({
@@ -51,10 +50,6 @@ def heartbeat_all():
             continue
 
         was_offline = (server.status == "offline")
-
-        # 调试：看看密码到底是什么情况
-        pwd = cfg.get("password")
-        print(f"  [{name}] 调试: password={'已设置('+str(len(pwd))+'字符)' if pwd else '未设置'}", flush=True)
 
         try:
             client = SSHClient(
