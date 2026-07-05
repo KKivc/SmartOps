@@ -120,6 +120,19 @@ def add_server():
         session.close()
         return jsonify({ "error": "SSH 连接失败，请检查用户名和密码"})
 
+    # 尝试自动更新云服务器 Prometheus 目标
+    try:
+        from collector.cloud_helper import update_prometheus_targets
+        session2 = get_session()
+        all_servers = [
+            {"name": s.name, "ip": s.ip, "status": s.status}
+            for s in session2.query(Server).all()
+        ]
+        session2.close()
+        update_prometheus_targets(all_servers)
+    except Exception:
+        pass  # 云服务器 SSH 未配或失败，静默跳过
+
     return jsonify({
         "success": "add success",
         "prometheus": "如需监控指标，请在云服务器上配置 node_exporter 抓取。"
@@ -142,6 +155,20 @@ def delete_server(name):
     session.delete(server)
     session.commit()
     session.close()
+
+    # 更新 Prometheus 目标
+    try:
+        from collector.cloud_helper import update_prometheus_targets
+        session2 = get_session()
+        all_servers = [
+            {"name": s.name, "ip": s.ip, "status": s.status}
+            for s in session2.query(Server).all()
+        ]
+        session2.close()
+        update_prometheus_targets(all_servers)
+    except Exception:
+        pass
+
     return jsonify({"success": True})
 
 # 历史趋势接口
