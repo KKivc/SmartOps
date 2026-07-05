@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from store.db import get_session
 from store.models import Alert, Server
 from collector.ssh_client import SSHClient
+from store.crypto import password_decrypt
 
 
 def load_servers() -> list[dict]:
@@ -24,6 +25,7 @@ def load_servers() -> list[dict]:
             "host": s.ip,
             "port": "22",
             "user": s.user,
+            "password": password_decrypt(s.password) if s.password else None,
         })
     session.close()
     return data
@@ -48,6 +50,7 @@ def heartbeat_all():
                 host=cfg["host"],
                 port=cfg["port"],
                 user=cfg["user"],
+                password=cfg.get("password"),
             )
             uptime = client.exec("uptime -p")
             client.close()
