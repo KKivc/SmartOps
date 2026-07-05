@@ -85,16 +85,24 @@ scrape_configs:
             return False
 
         ssh.connect(**connect_kwargs)
+        logger.info(f"✅ SSH 连接到 {os.getenv('CLOUD_SSH_HOST')} 成功")
+
+        # 云服务器上 SmartOps 基础设施目录（docker-compose.yml 所在目录）
+        cloud_path = os.getenv("CLOUD_INFRA_DIR", "/root/smartops-infra")
+        ssh.exec_command(f"mkdir -p {cloud_path}")
 
         # 写入 prometheus.yml
         sftp = ssh.open_sftp()
-        with sftp.open("/root/smartops-infra/prometheus.yml", "w") as f:
+        remote_file = f"{cloud_path}/prometheus.yml"
+        logger.info(f"📝 写入 {remote_file}")
+        with sftp.open(remote_file, "w") as f:
             f.write(prometheus_config)
         sftp.close()
 
         # 重启 Prometheus 容器
-        _, stdout, stderr = ssh.exec_command(
-            "docker compose -f /root/smartops-infra/docker-compose.yml restart prometheus"
+        logger.info("🔄 重启 Prometheus...")
+        stdin, stdout, stderr = ssh.exec_command(
+            f"docker compose -f {cloud_path}/docker-compose.yml restart prometheus"
         )
         exit_code = stdout.channel.recv_exit_status()
         ssh.close()
@@ -107,6 +115,12 @@ scrape_configs:
             logger.error(f"Prometheus 重启失败: {err}")
             return False
 
+    except paramiko.SSHException as e:
+        logger.error(f"SSH 连接失败: {e}")
+        return False
+    except FileNotFoundError as e:
+        logger.error(f"文件未找到: {e} — 请检查 CLOUD_INFRA_DIR 路径是否正确")
+        return False
     except Exception as e:
-        logger.error(f"云服务器 SSH 更新失败: {e}")
+        logger.error(f"云服务器 SSH 更新失败: {type(e).__name__}: {e}")
         return False
