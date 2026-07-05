@@ -36,7 +36,12 @@ def heartbeat_all():
 
     for cfg in configs:
         name = cfg["name"]
-        online = False
+        server = session.query(Server).filter_by(name=name).first()
+        if not server:
+            print(f"  [{name}] 数据库不存在，跳过")
+            continue
+
+        was_offline = (server.status == "offline")
 
         try:
             client = SSHClient(
@@ -44,39 +49,43 @@ def heartbeat_all():
                 port=cfg["port"],
                 user=cfg["user"],
             )
-            # 轻量心跳：执行 uptime 检测连通性
-            client.exec("uptime")
+            uptime = client.exec("uptime -p")
             client.close()
-            online = True
-        except Exception as e:
-            print(f"  [{name}] 心跳失败: {e}")
-            online = False
 
-        server = session.query(Server).filter_by(name=name).first()
-        if not server:
-            print(f"  [{name}] 数据库不存在，跳过")
-            continue
-
-        if online:
             server.last_heartbeat = datetime.now(timezone.utc)
             server.status = "online"
-        else:
-            server.status = "offline"
-            # 避免重复告警：检查是否已有未关闭的离线告警
-            existing = session.query(Alert).filter(
-                Alert.server_name == name,
-                Alert.type == "offline",
-                Alert.status == "open",
-            ).first()
-            if not existing:
-                alert = Alert(
-                    server_name=name,
-                    type="offline",
-                    message=f"服务器离线",
-                    value=0,
-                    status="open",
-                )
-                session.add(alert)
+            print(f"[{name}] 心跳正常: {uptime}")
+
+            # 自动恢复：如果之前是离线，关闭 open 的离线告警
+            if was_offline:
+                existing = session.query(Alert).filter(
+                    Alert.server_name == name,
+                    Alert.type == 'offline',
+                    Alert.status == 'open'
+                ).all()
+                for alert in existing:
+                    alert.status = "resolved"
+                if existing:
+                    print(f"[{name}] 服务器恢复在线，自动解决 {len(existing)} 条离线告警")
+
+        except Exception as e:
+            print(f"[{name}] 心跳失败: {e}")
+            if server.status == "online":
+                server.status = "offline"
+                existing = session.query(Alert).filter(
+                    Alert.server_name == name,
+                    Alert.type == 'offline',
+                    Alert.status == 'open'
+                ).first()
+                if not existing:
+                    alert = Alert(
+                        server_name=name,
+                        type="offline",
+                        message="服务器离线",
+                        value=0,
+                        status="open",
+                    )
+                    session.add(alert)
 
     session.commit()
     session.close()

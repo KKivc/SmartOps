@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify, render_template
 from store.db import init_db, get_session
 from store.models import Server, Metric, Log, Conversation, Message, Alert
@@ -8,7 +9,9 @@ from collector.ssh_client import SSHClient
 from store.crypto import password_encrypt
 from llm.retriever import build_bm25_index
 
-app = Flask(__name__)
+app = Flask(__name__,
+            static_folder=os.path.join(os.path.dirname(__file__), 'static'),
+            static_url_path='/static')
 
 
 @app.route('/api/logs', methods=['POST'])
@@ -298,6 +301,30 @@ def query_conversation():
 
     reply = agent.chat(conversation_id, message)
     return jsonify({"reply": reply})
+
+
+@app.route('/api/logs/query', methods=['POST'])
+def query_logs_direct():
+    """前端直接查 Loki（绕过 Agent），供日志查看页使用"""
+    data = request.get_json()
+    from llm.mcp.loki_mcp import query_logs
+    return jsonify(query_logs.invoke(data))
+
+
+@app.route('/api/logs/analyze', methods=['POST'])
+def analyze_logs_direct():
+    """前端直接分析 Loki 错误"""
+    data = request.get_json()
+    from llm.mcp.loki_mcp import analyze_errors
+    return jsonify(analyze_errors.invoke(data))
+
+
+@app.route('/api/metrics/current', methods=['POST'])
+def metrics_current():
+    """前端直接查 Prometheus 即时指标"""
+    data = request.get_json()
+    from llm.mcp.prometheus_mcp import query_metric
+    return jsonify(query_metric.invoke(data))
 
 
 if __name__ == '__main__':
