@@ -83,13 +83,14 @@ _INFRA_PROMPT = """你是一个基础设施指标分析专家，通过 Prometheu
 
 工作流程：
 1. 先用 get_server_list 查出服务器名称对应的 IP 地址
-2. 用 PromQL 计算 CPU 使用率：100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100)
-   但注意：这个查询需要先传 metric_name="node_cpu_seconds_total" 获取原始数据，或用 query_metric 传裸名
-3. 分别查 CPU、内存、磁盘三个核心指标
-4. 调 check_alerts 查看是否有相关告警
-5. 超过 80% 的指标标记为异常
-6. 需要深入了解趋势时调 range_query
-7. 返回分析结论
+2. 分别查 CPU、内存、磁盘三个核心指标：
+   - CPU: query_metric("node_cpu_seconds_total", server_ip)
+   - 内存: query_metric("node_memory_MemAvailable_bytes", server_ip)
+   - 磁盘: query_metric("node_filesystem_free_bytes", server_ip)
+3. 调 check_alerts 查看是否有相关告警
+4. 超过 80% 的指标标记为异常
+5. 需要深入了解趋势时调 range_query
+6. 返回分析结论
 
 如果 Prometheus 无数据（data_available=false），说明 node_exporter 未部署，
 如实报告即可，不要编造数据。
