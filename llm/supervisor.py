@@ -218,12 +218,31 @@ def _extract_server(text: str) -> str | None:
     """从用户输入中尝试提取服务器名，找不到返回 None"""
     if not text:
         return None
-    # 先查 "server: xxx" 或 "服务器 xxx" 模式
     import re
+
+    # 1. 优先匹配 "server: xxx" 或 "服务器 xxx" 或 "主机 xxx" 模式
     m = re.search(r"(?:server|服务器|主机)\s*[:：]?\s*(\S+)", text, re.IGNORECASE)
     if m:
-        name = m.group(1).strip("，。、")
-        return name
+        return m.group(1).strip("，。、 ")
+
+    # 2. 匹配 "xxx 的日志/状态/指标"（xxx 是英文/数字服务器名）
+    m = re.search(r"([a-zA-Z0-9_-]+)\s*(?:的日志|的狀態|的指标|日志|状态)", text)
+    if m:
+        return m.group(1).strip("，。、 ")
+
+    # 3. 从数据库中匹配已知服务器名
+    try:
+        from store.db import get_session
+        from store.models import Server
+        session = get_session()
+        for s in session.query(Server).all():
+            if s.name and s.name in text:
+                session.close()
+                return s.name
+        session.close()
+    except Exception:
+        pass
+
     return None
 
 
