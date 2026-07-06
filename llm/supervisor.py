@@ -42,21 +42,24 @@ class AgentState(TypedDict):
     intermediate_results: dict       # {worker_name: "分析结论文本"}
     final_report: str
     iteration: int
+    sub_question: str                # 精确子问题（Supervisor 拆解后发给 Worker）
 
 
 def _make_supervisor_prompt() -> str:
     """生成 Supervisor 系统提示词"""
-    return """你是一个运维指挥中心的主管（Supervisor）。你的团队有三个专家：
+    return """你是一个运维指挥中心的主管（Supervisor）。你的团队有三个专家，你需要分析用户问题并决定派谁去干活。
+
+【团队成员】
 1. **log_worker** — 日志分析专家，通过 Loki 查日志、分析错误码、统计级别
 2. **infra_worker** — 基础设施专家，通过 Prometheus 查 CPU/内存/磁盘/告警
 3. **knowledge_worker** — 知识库专家，检索运维文档和故障处理方案
 
 【决策规则】
-- 如果需要分析日志 → next = log_worker
-- 如果需要查看系统指标或告警 → next = infra_worker
-- 如果需要查运维知识或故障处理方案 → next = knowledge_worker
-- 如果各专家的信息已经足够回答用户 → next = FINISH
-- 如果用户问题不需要任何数据查询 → next = FINISH
+- 需要看日志、错误码、日志级别 → log_worker
+- 需要看系统指标（CPU/内存/磁盘）、告警、Prometheus 数据 → infra_worker
+- 需要查运维知识、故障处理方案、历史记录 → knowledge_worker
+- 已有数据足够回答用户，或问题不需要外部数据 → FINISH
+- 注意：用户可能一次性问多个事情，一次只派一个 Worker，下一轮再派下一个
 
 【已有数据】
 各专家返回的分析结论如下：
@@ -65,19 +68,17 @@ def _make_supervisor_prompt() -> str:
 【当前轮次】{iteration}/{MAX_ITERATIONS}
 
 【输出格式】
-只输出一行 JSON：
-{{"next": "worker_name", "reason": "为什么选这个worker"}}
-或当信息足够时：
-{{"next": "FINISH", "reason": "为什么结束", "report": "RCA 报告内容"}}
+路由到 Worker 时，输出一行 JSON：
+{{"next": "log_worker", "reason": "简短理由", "sub_question": "拆解后给该 Worker 的精确任务描述"}}
 
-RCA 报告请用 Markdown 格式：
-# RCA 诊断报告
-## 📋 概要
-## 🕐 时间线
-## 🔍 根因
-## 📊 证据（引用各专家结论）
-## 🔧 修复建议
-## 💡 预防措施"""
+结束本轮时：
+{{"next": "FINISH", "reason": "简短理由"}}
+
+⚠️ 重要：
+- sub_question 要精确，例如全量汇总"时，拆成"检查 web-01 的 CPU、内存、磁盘指标"
+- 不要在 JSON 里嵌入 Markdown 或多行文本
+- 不要输出 report 字段"""
+
 
 
 def supervisor_node(state: AgentState) -> dict:
@@ -108,10 +109,11 @@ def supervisor_node(state: AgentState) -> dict:
     decision_next = decision.get("next", "FINISH")
 
     if decision_next == "FINISH":
-        report = decision.get("report", _auto_report(state["intermediate_results"]))
-        return {"next": "FINISH", "final_report": report}
+        return {"next": "FINISH"}
 
-    return {"next": decision_next}
+    # 提取精确子问题传给 Worker
+    sub = decision.get("sub_question", "")
+    return {"next": decision_next, "sub_question": sub}
 
 
 def _summarize_results(results: dict) -> str:
@@ -150,7 +152,7 @@ def _auto_report(results: dict) -> str:
 
 def log_worker_node(state: AgentState) -> dict:
     """日志 Worker 节点 — 调用 log_worker_agent"""
-    question = state["messages"][-1].content if state["messages"] else "分析日志"
+    question = state.get("sub_question") or state["messages"][-1].content or "分析日志"
     try:
         result = log_worker_agent.invoke({"messages": [("human", question)]})
         response = result["messages"][-1].content
@@ -168,7 +170,7 @@ def log_worker_node(state: AgentState) -> dict:
 
 def infra_worker_node(state: AgentState) -> dict:
     """基础设施 Worker 节点 — 调用 infra_worker_agent"""
-    question = state["messages"][-1].content if state["messages"] else "检查服务器指标"
+    question = state.get("sub_question") or state["messages"][-1].content or "检查服务器指标"
     try:
         result = infra_worker_agent.invoke({"messages": [("human", question)]})
         response = result["messages"][-1].content
@@ -186,7 +188,7 @@ def infra_worker_node(state: AgentState) -> dict:
 
 def knowledge_worker_node(state: AgentState) -> dict:
     """知识库 Worker 节点 — 调用 knowledge_worker_agent"""
-    question = state["messages"][-1].content if state["messages"] else "搜索运维知识"
+    question = state.get("sub_question") or state["messages"][-1].content or "搜索运维知识"
     try:
         result = knowledge_worker_agent.invoke({"messages": [("human", question)]})
         response = result["messages"][-1].content
@@ -212,10 +214,66 @@ def should_continue(state: AgentState) -> Literal["continue", "end"]:
 
 
 def finish_node(state: AgentState) -> dict:
-    """结束节点 — 确保 final_report 进入最终状态"""
+    """结束节点 — 用 LLM 生成 RCA 报告"""
     report = state.get("final_report", "")
-    if not report:
-        report = _auto_report(state.get("intermediate_results", {}))
+    if report:
+        return {"final_report": report}
+
+    results = state.get("intermediate_results", {})
+    messages = state.get("messages", [])
+    if not results:
+        return {"final_report": "您好，我是 SmartOps 运维助手，有什么可以帮助您的？"}
+
+    # 用 LLM 综合生成 RCA 报告
+    context_parts = []
+    for worker, text in results.items():
+        if text:
+            readable = worker.replace("_", " ").title()
+            context_parts.append(f"【{readable}】\n{text[:500]}")
+    context = "\n\n".join(context_parts)
+
+    user_question = messages[-1].content if messages else ""
+
+    rca_prompt = f"""你是一个运维诊断报告专家。根据以下多个专家分析结果，生成一份完整的运维诊断报告。
+
+用户问题：{user_question}
+
+专家分析结果：
+{context}
+
+请按以下格式输出 Markdown 报告：
+
+# RCA 诊断报告
+
+## 📋 概要
+一句话说清问题和根因
+
+## 🕐 时间线（如有）
+- 时间 | 事件 | 来源
+
+## 🔍 根因分析
+详细分析问题根因
+
+## 📊 证据
+引用各专家分析结论的关键数据
+
+## 🔧 修复建议
+1. 具体可操作的步骤
+2. 必要时给出命令示例
+
+## 💡 预防措施
+长期改进建议
+
+要求：
+- 只输出报告正文，不需要额外说明
+- 基于数据，不编造
+- 如果用户问题不需要故障分析，直接回答即可"""
+    try:
+        resp = _LLM.invoke([("system", rca_prompt)])
+        report = resp.content
+    except Exception:
+        report = _auto_report(results)
+
     return {"final_report": report}
 
 

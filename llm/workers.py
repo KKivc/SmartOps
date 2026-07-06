@@ -21,7 +21,7 @@ from langgraph.prebuilt import create_react_agent
 
 from llm.mcp.loki_mcp import query_logs, analyze_errors, count_by_level
 from llm.mcp.prometheus_mcp import query_metric, range_query, check_alerts
-from llm.tools import search_knowledge_base
+from llm.tools import search_knowledge_base, get_server_list
 
 # ── 公共 LLM ────────────────────────────────────────────────
 
@@ -71,28 +71,32 @@ _INFRA_PROMPT = """你是一个基础设施指标分析专家，通过 Prometheu
 
 可用工具：
 - **query_metric**(metric_name, server_ip) — 查询指标当前值
-  metric_name 是 PromQL 表达式，例如：
-  - 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100)
-  - (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
-  - (1 - node_filesystem_free_bytes / node_filesystem_size_bytes) * 100
-  server_ip 是服务器 IP 地址（从上下文推断）
+  metric_name 只传裸指标名，例如：
+  - node_cpu_seconds_total
+  - node_memory_MemAvailable_bytes
+  - node_filesystem_size_bytes
+  - node_filesystem_free_bytes
+  server_ip 传服务器 IP 地址（注意不是服务器名称）
 - **range_query**(metric_name, server_ip, duration) — 查询历史趋势
 - **check_alerts**() — 查看当前活跃告警
+- **get_server_list**() — 获取所有服务器信息（名称 ↔ IP 映射）
 
 工作流程：
-1. 先查出要分析的服务器 IP
-2. 分别查 CPU、内存、磁盘三个核心指标
-3. 调 check_alerts 查看是否有相关告警
-4. 超过 80% 的指标标记为异常
-5. 需要深入了解趋势时调 range_query
-6. 返回分析结论
+1. 先用 get_server_list 查出服务器名称对应的 IP 地址
+2. 用 PromQL 计算 CPU 使用率：100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100)
+   但注意：这个查询需要先传 metric_name="node_cpu_seconds_total" 获取原始数据，或用 query_metric 传裸名
+3. 分别查 CPU、内存、磁盘三个核心指标
+4. 调 check_alerts 查看是否有相关告警
+5. 超过 80% 的指标标记为异常
+6. 需要深入了解趋势时调 range_query
+7. 返回分析结论
 
 如果 Prometheus 无数据（data_available=false），说明 node_exporter 未部署，
 如实报告即可，不要编造数据。
 
 输出用 Markdown 格式：
 📊 **基础设施分析结论**
-- 服务器：xxx
+- 服务器：xxx（IP: xxx）
 - CPU：xx%（↑ 异常/正常）
 - 内存：xx%（↑ 异常/正常）
 - 磁盘：xx%（↑ 异常/正常）
@@ -101,7 +105,7 @@ _INFRA_PROMPT = """你是一个基础设施指标分析专家，通过 Prometheu
 
 infra_worker_agent = create_react_agent(
     model=_LLM,
-    tools=[query_metric, range_query, check_alerts],
+    tools=[query_metric, range_query, check_alerts, get_server_list],
     prompt=_INFRA_PROMPT,
 )
 
