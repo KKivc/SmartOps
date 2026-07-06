@@ -2,29 +2,30 @@
 
 架构:
   用户输入 → Supervisor（LLM 决策路由）
-    ├→ log_worker → 回到 Supervisor
-    ├→ infra_worker → 回到 Supervisor
-    ├→ knowledge_worker → 回到 Supervisor
+    ├→ log_worker_agent → 回到 Supervisor
+    ├→ infra_worker_agent → 回到 Supervisor
+    ├→ knowledge_worker_agent → 回到 Supervisor
     └→ FINISH → 生成 RCA 报告
 
-工作流程:
-  1. Supervisor 节点用 LLM 推理，输出 next 路由
-  2. 对应 Worker 执行数据查询，存入 intermediate_results
-  3. 回到 Supervisor 继续推理，直到 next=FINISH
-  4. 生成 final_report
+每个 Worker 是独立 ReAct Agent（LLM + system prompt + tools），
+自主理解用户意图并执行分析，返回分析结论文本。
 """
 
 import json
+import os
 from typing import Annotated, Literal, Sequence, TypedDict
 
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
-from llm.workers import infra_worker, knowledge_worker, log_worker
+from llm.workers import (
+    infra_worker_agent,
+    knowledge_worker_agent,
+    log_worker_agent,
+)
 
-# LLM 实例（复用 agent.py 的配置）
-import os
+# LLM 实例
 _LLM = ChatOpenAI(
     model="deepseek-v4-flash",
     base_url="https://opencode.ai/zen/go/v1",
@@ -38,212 +39,167 @@ class AgentState(TypedDict):
     """StateGraph 全局状态"""
     messages: Annotated[Sequence[dict], add_messages]
     next: Literal["FINISH", "log_worker", "infra_worker", "knowledge_worker"]
-    intermediate_results: dict
+    intermediate_results: dict       # {worker_name: "分析结论文本"}
     final_report: str
     iteration: int
 
 
 def _make_supervisor_prompt() -> str:
     """生成 Supervisor 系统提示词"""
-    return """你是一个运维指挥中心的主管（Supervisor）。你的团队有三个工人：
-1. **log_worker** — 查 Loki 日志（查询日志、分析错误码、按级别统计）
-2. **infra_worker** — 查 Prometheus 指标 + 告警（CPU/内存/磁盘）
-3. **knowledge_worker** — 查知识库（运维文档、历史故障）
+    return """你是一个运维指挥中心的主管（Supervisor）。你的团队有三个专家：
+1. **log_worker** — 日志分析专家，通过 Loki 查日志、分析错误码、统计级别
+2. **infra_worker** — 基础设施专家，通过 Prometheus 查 CPU/内存/磁盘/告警
+3. **knowledge_worker** — 知识库专家，检索运维文档和故障处理方案
 
 【决策规则】
-- 如果需要分析日志问题 → next = log_worker
-- 如果需要查看系统指标 → next = infra_worker
-- 如果需要查运维知识 → next = knowledge_worker
-- 如果信息已经足够 → next = FINISH
+- 如果需要分析日志 → next = log_worker
+- 如果需要查看系统指标或告警 → next = infra_worker
+- 如果需要查运维知识或故障处理方案 → next = knowledge_worker
+- 如果各专家的信息已经足够回答用户 → next = FINISH
+- 如果用户问题不需要任何数据查询 → next = FINISH
 
-【当前迭代次数】{iteration}/{MAX_ITERATIONS}
-【已收集数据】{info}
+【已有数据】
+各专家返回的分析结论如下：
+{info}
+
+【当前轮次】{iteration}/{MAX_ITERATIONS}
 
 【输出格式】
-只输出一个 JSON 对象：
+只输出一行 JSON：
 {{"next": "worker_name", "reason": "为什么选这个worker"}}
-或
+或当信息足够时：
 {{"next": "FINISH", "reason": "为什么结束", "report": "RCA 报告内容"}}
-"""
+
+RCA 报告请用 Markdown 格式：
+# RCA 诊断报告
+## 📋 概要
+## 🕐 时间线
+## 🔍 根因
+## 📊 证据（引用各专家结论）
+## 🔧 修复建议
+## 💡 预防措施"""
 
 
 def supervisor_node(state: AgentState) -> dict:
     """Supervisor LLM 节点 — 决定下一步路由"""
-    info_summary = _summarize_results(state["intermediate_results"])
+    info_summary = _summarize_results(state.get("intermediate_results", {}))
     iteration = state.get("iteration", 0)
     prompt = _make_supervisor_prompt().format(
         iteration=iteration + 1,
         MAX_ITERATIONS=MAX_ITERATIONS,
-        info=info_summary or "尚无数据",
+        info=info_summary or "尚无数据，尚无专家报告",
     )
 
-    llm = _LLM
-
     try:
-        resp = llm.invoke([("system", prompt), *state["messages"]])
-        decision = json.loads(resp.content.strip().strip("```json").strip("```").strip())
+        resp = _LLM.invoke([("system", prompt), *state["messages"]])
+        decision = json.loads(
+            resp.content.strip().strip("```json").strip("```").strip()
+        )
     except Exception as e:
         import traceback
+
         print(f"[supervisor] LLM 决策失败: {e}\n{traceback.format_exc()}", flush=True)
-        # 解析失败时终止，但用兜底报告而不是空
         fallback = _auto_report(state.get("intermediate_results", {}))
         return {
             "next": "FINISH",
             "final_report": f"【诊断报告（自动生成）】\n{fallback}",
         }
 
-    if decision.get("next") == "FINISH":
+    decision_next = decision.get("next", "FINISH")
+
+    if decision_next == "FINISH":
         report = decision.get("report", _auto_report(state["intermediate_results"]))
         return {"next": "FINISH", "final_report": report}
 
-    return {"next": decision["next"]}
+    return {"next": decision_next}
 
 
 def _summarize_results(results: dict) -> str:
-    """将 intermediate_results 简化为带关键数值的描述文本"""
+    """将 intermediate_results（各专家文本结论）简化为摘要"""
     if not results:
         return ""
     parts = []
-    for worker, data in results.items():
-        if isinstance(data, dict):
-            # 提取关键数值字段，忽略 metadata 字段
-            vals = []
-            for k, v in data.items():
-                if v is None or k in ("server_name", "server_ip"):
-                    continue
-                if isinstance(v, (int, float)):
-                    vals.append(f"{k}={v:.1f}" if isinstance(v, float) else f"{k}={v}")
-                elif isinstance(v, str) and v:
-                    vals.append(f"{k}={v[:30]}")
-                elif isinstance(v, bool):
-                    vals.append(f"{k}={v}")
-            if vals:
-                parts.append(f"{worker}: {', '.join(vals)}")
-            else:
-                parts.append(f"{worker}: 无数据")
+    for worker, text in results.items():
+        if not text:
+            parts.append(f"【{worker}】无数据")
         else:
-            parts.append(f"{worker}: {str(data)[:100]}")
-    return "; ".join(parts)
+            # 取前 300 字作为摘要
+            summary = text[:300]
+            if len(text) > 300:
+                summary += "...（以下省略）"
+            parts.append(f"【{worker}】\n{summary}")
+    return "\n\n".join(parts)
 
 
 def _auto_report(results: dict) -> str:
     """当 LLM 未生成 report 时的兜底报告"""
-    lines = ["# 诊断报告", ""]
-    for worker, data in results.items():
-        lines.append(f"## {worker.replace('_', ' ').title()}")
-        if isinstance(data, dict):
-            if data.get("data_available") is False:
-                lines.append("- Prometheus 暂无指标数据，请确认 node_exporter 已安装")
-            elif data.get("error"):
-                lines.append(f"- 错误: {data['error']}")
-            else:
-                for k, v in data.items():
-                    if k in ("server_name", "server_ip", "data_available"):
-                        continue
-                    if v is None:
-                        lines.append(f"- {k}: 无数据")
-                    elif isinstance(v, (int, float)):
-                        lines.append(f"- {k}: {v:.1f}%")
-                    else:
-                        lines.append(f"- {k}: {str(v)[:200]}")
-        else:
-            lines.append(f"- {str(data)[:200]}")
-    lines.append("")
-    lines.append("_报告由 Supervisor 自动生成_")
+    if not results:
+        return "暂无数据可生成报告。"
+    lines = ["# 诊断报告（自动生成）", ""]
+    for worker, text in results.items():
+        readable = worker.replace("_", " ").title()
+        lines.append(f"## {readable}")
+        lines.append(text if text else "无数据")
+        lines.append("")
+    lines.append("_报告由 Supervisor 自动汇总_")
     return "\n".join(lines)
 
 
-def log_worker_node(state: AgentState) -> dict:
-    """日志 Worker 节点"""
-    last_msg = state["messages"][-1].content if state["messages"] else ""
-    server_name = _extract_server(last_msg)
-    if not server_name:
-        return {"intermediate_results": {**state.get("intermediate_results", {}), "log_worker": {"info": "未指定服务器，跳过日志查询"}},
-                "iteration": state.get("iteration", 0) + 1}
+# ── Worker 节点（调用 ReAct Agent） ──────────────────────────
 
+
+def log_worker_node(state: AgentState) -> dict:
+    """日志 Worker 节点 — 调用 log_worker_agent"""
+    question = state["messages"][-1].content if state["messages"] else "分析日志"
     try:
-        result = log_worker(server_name)
+        result = log_worker_agent.invoke({"messages": [("human", question)]})
+        response = result["messages"][-1].content
     except Exception as e:
-        result = {"error": str(e)}
+        response = f"❌ 日志分析 Agent 异常: {e}"
+
     return {
-        "intermediate_results": {**state.get("intermediate_results", {}), "log_worker": result},
+        "intermediate_results": {
+            **state.get("intermediate_results", {}),
+            "log_worker": response,
+        },
         "iteration": state.get("iteration", 0) + 1,
     }
 
 
 def infra_worker_node(state: AgentState) -> dict:
-    """基础设施 Worker 节点"""
-    last_msg = state["messages"][-1].content if state["messages"] else ""
-    server_name = _extract_server(last_msg)
-    if not server_name:
-        # 未指定服务器时，查第一台在线的
-        try:
-            from store.db import get_session
-            from store.models import Server as ServerModel
-            session = get_session()
-            first = session.query(ServerModel).filter_by(status="online").first()
-            session.close()
-            if first:
-                server_name = first.name
-        except Exception:
-            server_name = None
-    if not server_name:
-        return {"intermediate_results": {**state.get("intermediate_results", {}), "infra_worker": {"info": "无可用服务器，跳过指标查询"}},
-                "iteration": state.get("iteration", 0) + 1}
-
+    """基础设施 Worker 节点 — 调用 infra_worker_agent"""
+    question = state["messages"][-1].content if state["messages"] else "检查服务器指标"
     try:
-        result = infra_worker(server_name)
+        result = infra_worker_agent.invoke({"messages": [("human", question)]})
+        response = result["messages"][-1].content
     except Exception as e:
-        result = {"error": str(e)}
+        response = f"❌ 基础设施分析 Agent 异常: {e}"
+
     return {
-        "intermediate_results": {**state.get("intermediate_results", {}), "infra_worker": result},
+        "intermediate_results": {
+            **state.get("intermediate_results", {}),
+            "infra_worker": response,
+        },
         "iteration": state.get("iteration", 0) + 1,
     }
 
 
 def knowledge_worker_node(state: AgentState) -> dict:
-    """知识库 Worker 节点"""
-    last_msg = state["messages"][-1].content if state["messages"] else ""
+    """知识库 Worker 节点 — 调用 knowledge_worker_agent"""
+    question = state["messages"][-1].content if state["messages"] else "搜索运维知识"
     try:
-        result = knowledge_worker(last_msg)
+        result = knowledge_worker_agent.invoke({"messages": [("human", question)]})
+        response = result["messages"][-1].content
     except Exception as e:
-        result = {"error": str(e)}
+        response = f"❌ 知识库检索 Agent 异常: {e}"
+
     return {
-        "intermediate_results": {**state.get("intermediate_results", {}), "knowledge_worker": result},
+        "intermediate_results": {
+            **state.get("intermediate_results", {}),
+            "knowledge_worker": response,
+        },
         "iteration": state.get("iteration", 0) + 1,
     }
-
-
-def _extract_server(text: str) -> str | None:
-    """从用户输入中尝试提取服务器名，找不到返回 None"""
-    if not text:
-        return None
-    import re
-
-    # 1. 优先匹配 "server: xxx" 或 "服务器 xxx" 或 "主机 xxx" 模式
-    m = re.search(r"(?:server|服务器|主机)\s*[:：]?\s*(\S+)", text, re.IGNORECASE)
-    if m:
-        return m.group(1).strip("，。、 ")
-
-    # 2. 匹配 "xxx 的日志/状态/指标"（xxx 是英文/数字服务器名）
-    m = re.search(r"([a-zA-Z0-9_-]+)\s*(?:的日志|的狀態|的指标|日志|状态)", text)
-    if m:
-        return m.group(1).strip("，。、 ")
-
-    # 3. 从数据库中匹配已知服务器名
-    try:
-        from store.db import get_session
-        from store.models import Server
-        session = get_session()
-        for s in session.query(Server).all():
-            if s.name and s.name in text:
-                session.close()
-                return s.name
-        session.close()
-    except Exception:
-        pass
-
-    return None
 
 
 def should_continue(state: AgentState) -> Literal["continue", "end"]:
@@ -257,7 +213,13 @@ def should_continue(state: AgentState) -> Literal["continue", "end"]:
 
 def finish_node(state: AgentState) -> dict:
     """结束节点 — 确保 final_report 进入最终状态"""
-    return {"final_report": state.get("final_report", "") or _auto_report(state.get("intermediate_results", {}))}
+    report = state.get("final_report", "")
+    if not report:
+        report = _auto_report(state.get("intermediate_results", {}))
+    return {"final_report": report}
+
+
+# ── 构建图 ──────────────────────────────────────────────────
 
 
 def build_supervisor() -> StateGraph:
@@ -274,7 +236,7 @@ def build_supervisor() -> StateGraph:
     # 入口 → Supervisor
     graph.set_entry_point("supervisor")
 
-    # Supervisor → Worker (根据 next 字段路由)
+    # Supervisor → Worker（根据 next 字段路由）
     graph.add_conditional_edges(
         "supervisor",
         lambda s: s.get("next", "FINISH"),
