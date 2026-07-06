@@ -1,145 +1,200 @@
 ---
 name: auto-coder
-description: "Automated spec-driven development for SmartOps. Reads the multi-agent MCP architecture spec, finds the next pending implementation task from the schedule, writes code following the architecture and patterns, runs qa-tester with up to 3 auto-fix rounds, and persists progress with commits. Use when user says 'auto code', '自动开发', '自动写代码', 'auto dev', '一键开发', '继续实现', or wants automated task-by-task implementation from the design spec."
+description: "通用自动化开发助手。从项目排期表读取下一个开发任务，按架构/技术栈上下文自动实现，自测（≤3 轮自动修复）并提交进度。当用户说 'auto code'、'自动开发'、'自动写代码'、'auto dev'、'一键开发'、'继续实现'、'auto code 任务ID' 或任何要求按排期自动实现的场景时触发。"
 ---
 
-# SmartOps Auto Coder
+# Auto Coder — 通用自动化开发助手
 
-One trigger completes: **read spec → find task → implement → self-test → persist**.
+一次触发完成：**匹配项目 → 读取排期 → 实现 → 自测 → 提交**
 
-> **⚠️ CRITICAL: Activate `.venv` before ANY `python`/`pytest` command**
-> - Windows: `.\.venv\Scripts\Activate.ps1`
-> - macOS/Linux: `source .venv/bin/activate`
+> **🔍 自动探测：** 根据项目文件自动识别类型和测试框架
+> **📋 可配置：** 通过 `references/` 目录的模板或项目 `CLAUDE.md` 提供上下文
 
 ---
 
 ## Pipeline
 
 ```
-Sync Spec → Find Task → Read Context → Implement → Test (≤3 fix rounds) → Persist
+Detect Project → Read Schedule → Read Context → Implement → Test (≤3 fix rounds) → Persist
 ```
 
 ---
 
-## Reference Map
+## 参考文件
 
-All files under `.github/skills/auto-coder/references/`:
+所有文件在 `.github/skills/auto-coder/references/` 下：
 
-| File | Content | When to Read |
-|------|---------|-------------|
-| `05-architecture.md` | Architecture & module design | Every cycle |
-| `03-tech-stack.md` | Tech stack & interfaces | When implementing MCP/Agent |
-| `06-schedule.md` | Task schedule & status | Every cycle |
+| 文件 | 内容 | 何时读取 |
+|------|------|---------|
+| `05-architecture.md` | 架构设计 & 目录结构 | 每次实现前 |
+| `03-tech-stack.md` | 技术栈 & 接口约定 | 每次实现前 |
+| `06-schedule.md` | 任务排期 & 状态 | 每次循环 |
 
-**Spec doc:** `docs/superpowers/specs/2026-07-05-smartops-multi-agent-mcp-design.md`
+如果某文件不存在，从项目 `CLAUDE.md` 或 `.claude/settings.json` 推断信息。
 
 ---
 
-## Step 1: Sync Spec
+## Step 0：探测项目
 
-If any spec file has been updated, re-read the schedule:
+在进入 pipeline 前自动探测项目类型：
 
 ```powershell
-# Re-read the schedule to get latest task statuses
-type .github/skills/auto-coder/references/06-schedule.md
+# 检查项目类型
+Test-Path "requirements.txt"      # → Python
+Test-Path "package.json"          # → Node
+Test-Path "go.mod"                # → Go
+Test-Path "Cargo.toml"            # → Rust
 ```
 
-**Task markers:**
+**探测结果决定：**
 
-| Marker | Status |
-|--------|--------|
-| `⬜` | Not started |
-| `🔶` | In progress |
-| `✅` | Completed |
-| `❌` | Blocked |
+| 属性 | Python | Node | Go |
+|------|--------|------|----|
+| 测试命令 | `pytest -v` | `npm test` / `npx jest` | `go test ./...` |
+| 风格检查 | `ruff check .` | `npx eslint .` | `gofmt` |
+| 包管理器 | `pip install` | `npm install` | `go mod tidy` |
 
----
-
-## Step 2: Find Task
-
-1. Pick the first `🔶` (in progress) task → continue it
-2. If none in progress → pick the first `⬜` (not started) task
-3. If user specified a task ID (e.g. `auto code B2`) → target that one
-4. Check dependencies: if dependency is `⬜` or `❌`, warn and stop
+如果 `references/` 中存在已填写的 `03-tech-stack.md`，以文件中的配置为准。
 
 ---
 
-## Step 3: Read Context
+## Step 1：读取排期
 
-Read the relevant reference files:
+从 `.github/skills/auto-coder/references/06-schedule.md` 读取任务排期。
 
-| Task Type | Read These |
-|-----------|-----------|
-| MCP (B-series) | `05-architecture.md` (MCP section), `03-tech-stack.md` |
-| Agent (C-series) | `05-architecture.md` (full), `03-tech-stack.md` |
-| Cleanup (D-series) | `05-architecture.md` (files to modify) |
+### 查找下一个任务
 
----
+1. 找到第一个 **`🔶`（进行中）** 的任务 → 继续它
+2. 如果没有进行中的 → 找第一个 **`⬜`（未开始）** 的任务
+3. 如果用户指定了 ID（如 `auto code A2`）→ 定位到该任务
+4. 检查依赖：如果依赖项是 `⬜` 或 `❌`，警告并停止
 
-## Step 4: Implement
+### 任务标记
 
-1. **Extract** from spec: inputs/outputs, interfaces, design principles, file paths
-2. **Plan** files to create/modify before writing any code
-3. **Code** following existing project patterns:
-   - Match existing code style (docstrings, imports, error handling)
-   - Follow the architecture spec exactly
-   - Use `.env` values, never hardcode URLs/keys
-4. **Self-review** before testing: verify all created files exist and imports are correct
+| 标记 | 状态 |
+|------|------|
+| `⬜` | 未开始 |
+| `🔶` | 进行中 |
+| `✅` | 已完成 |
+| `❌` | 阻塞 |
 
 ---
 
-## Step 5: Test & Auto-Fix
+## Step 2：读取上下文
+
+根据任务类型读取参考文件：
+
+| 场景 | 读取 |
+|------|------|
+| 新建模块 | `05-architecture.md`（文件结构 + 设计原则） |
+| 实现接口 | `03-tech-stack.md`（技术栈 + API 约定） |
+| 补充功能 | `CLAUDE.md`（项目规则 + 约定） |
+| 以上全部 | 三份都读 |
+
+如果 reference 文件还是**空白模板**（含注释说明），则改为从项目 `CLAUDE.md` 和已有代码中推断上下文。
+
+---
+
+## Step 3：实现
+
+1. **提取** 上下文中关键信息：输入/输出、接口定义、设计原则、文件路径
+2. **规划** 要创建/修改的文件清单，确认后再写代码
+3. **编码** 匹配项目已有风格：
+   - 保持一致的注释/docstring 风格
+   - 遵循项目架构设计
+   - 使用 `.env` 或配置文件中的值，不硬编码
+   - 参考项目中已有的类似实现
+4. **自检** 测试前验证：所有创建的文件存在、导入正确、语法无误
+
+---
+
+## Step 4：测试 & 自动修复
+
+### 运行测试
 
 ```powershell
-# Run relevant tests
-pytest -v [relevant test file or -k filter]
+# Python 项目
+pytest -v [相关测试文件或 -k 过滤]
+
+# Node 项目
+npm test -- [相关测试文件]
+
+# Go 项目
+go test ./[相关模块]/...
 ```
 
-**Fix loop:**
+如果项目没有该语言的测试框架，尝试手动验证：
+- Python: `python -c "import 模块; print('OK')"`
+- Node: `node -e "require('模块')"`
+- Go: `go build ./...`
+
+### 修复循环
 
 ```
 Round 0..2:
-  Run pytest on relevant file
-  If pass → continue to Step 6
-  If fail → analyze error, apply fix, re-run
+  运行测试
+  通过 → 继续到 Step 5
+  失败 → 分析错误 → 应用修复 → 重新测试
 
-Round 3 still failing → STOP, show failure report
+Round 3 仍失败 → 停止，展示失败报告
 ```
 
-For tasks that don't have dedicated tests yet, verify manually:
-- MCP tasks: write a small Python snippet to import and call the module
-- Agent tasks: verify the agent can be instantiated
+### 常见修复
+
+| 错误类型 | 修复方法 |
+|---------|---------|
+| `ModuleNotFoundError` / `Cannot find module` | 安装缺失依赖 |
+| 语法错误 | 修复代码 |
+| 测试断言失败 | 分析逻辑错误并修改 |
+| 类型错误 | 修复类型不匹配 |
 
 ---
 
-## Step 6: Persist
+## Step 5：提交进度
 
-1. **Update schedule**: change task marker `⬜` → `✅` (or `🔶` if partially done)
-2. **Update `06-schedule.md`**: update the "当前进度" section
-3. **Show summary**:
+1. **更新排期表**：`⬜` → `✅`（或 `🔶` 如果部分完成）
+2. **更新进度摘要**：修改 `06-schedule.md` 的「当前进度」部分
+3. **展示摘要**：
 
 ```
-✅ [B2] 实现 llm/mcp/loki_mcp.py — done
-   Files: llm/mcp/__init__.py, llm/mcp/loki_mcp.py
-   Tests: 3/3 passed
-   Commit: feat(mcp): [B2] implement Loki MCP layer
+✅ [A2] 实现用户登录接口 — done
+   文件: src/api/auth.py, src/models/user.py
+   测试: 3/3 passed
+   提交: feat(auth): [A2] 实现用户登录接口
 
    "commit" → git add + commit
-   "skip"   → end
-   "next"   → commit + start next task
+   "skip"   → 结束
+   "next"   → commit + 开始下一个任务
 ```
 
-4. On "next" → loop back to Step 1
+4. 用户说 `"next"` → 循环回 Step 1
 
 ---
+
+## 项目配置（可选）
+
+在项目 `.claude/settings.json` 或 `CLAUDE.md` 中可以配置以下参数：
+
+```json
+// .claude/settings.json
+{
+  "skills": {
+    "auto-coder": {
+      "schedule": "docs/schedule.md",
+      "architecture": "docs/architecture.md",
+      "tech-stack": "docs/tech-stack.md",
+      "test-command": "pytest -v -x",
+      "spec-dir": "docs/specs/"
+    }
+  }
+}
+```
 
 ## 实现注意事项
 
-| 任务 | 关键要点 |
+| 场景 | 关键要点 |
 |------|---------|
-| B2 (Loki MCP) | 用 `requests` 调 Loki HTTP API；`analyze_errors` 需解析日志行统计错误码 |
-| B3 (Prom MCP) | 用 `requests` 调 Prometheus HTTP API；`range_query` 需处理时间范围参数 |
-| C2 (Supervisor) | LangGraph StateGraph；循环条件边路由到 Worker 或 FINISH |
-| C3 (Workers) | 工具函数，不要调 LLM；从 intermediate_results 读/写 |
-| D1 (精简 tools) | 删除 get_logs, get_metrics_history；get_server_status 改为查 Prometheus |
-| D2 (精简 collector) | 只保留心跳 + 离线检测；删除指标/日志采集 |
+| 新建模块 | 先在 `05-architecture.md` 确认目录结构和文件命名规则 |
+| 引入新依赖 | 更新 `requirements.txt` / `package.json`，使用现有版本风格 |
+| 修改接口 | 保持向后兼容，或同步更新所有调用方 |
+| 删除废弃代码 | 只清理自己修改引入的废弃代码，不动原有的 |

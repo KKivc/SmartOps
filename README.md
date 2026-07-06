@@ -1,12 +1,55 @@
-# SmartOps — 智能运维知识搜索与问答系统
-
-> **AI Agent + RAG 混合检索** — 让运维知识「搜得到、答得准、用得上」
+# SmartOps — 智能运维平台
 
 ---
 
 ## 项目概述
 
-SmartOps 是一个面向企业级运维场景的智能问答系统，解决运维文档分散、故障排查效率低、历史经验难以沉淀的共性问题。系统结合 LangChain Agent 自动化工具体系与 RAG 混合搜索知识库，支持自然语言驱动的运维分析、故障排查与服务器监控。
+SmartOps 是一个集成多 Agent 故障分析、服务器监控告警、RAG 知识库的一站式运维工具，解决运维文档分散、故障排查效率低、历史经验难以沉淀的共性问题。系统结合 LangGraph 多 Agent 架构与 RAG 混合搜索知识库，支持自然语言驱动的运维分析、故障排查与服务器监控。
+
+---
+
+## 🖥 页面展示
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="screenshots/overview.png" alt="总览页面" width="95%">
+      <br><strong>📡 总览</strong> — 服务器状态卡片、在线/失联统计、快速添加
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/servers.png" alt="服务器列表" width="95%">
+      <br><strong>🖥 服务器</strong> — 完整表格、实时指标、添加/删除管理
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/alerts.png" alt="告警页面" width="95%">
+      <br><strong>🔔 告警</strong> — 告警列表、状态流转（open → acknowledged → resolved）
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/trend.png" alt="趋势分析" width="95%">
+      <br><strong>📈 趋势</strong> — Chart.js 图表、多指标切换（CPU/内存/磁盘）、时间范围选择
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/logs.png" alt="日志查询" width="95%">
+      <br><strong>📋 日志查询</strong> — Loki 日志检索、级别/时间/关键词过滤、错误码统计
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/chat-v2.gif" alt="AI 对话" width="95%">
+      <br><strong>🤖 AI 对话</strong> — 多轮会话、Supervisor 多 Agent 协作、RCA 报告渲染
+    </td>
+  </tr>
+</table>
+
+
 
 ---
 
@@ -40,18 +83,57 @@ SmartOps 是一个面向企业级运维场景的智能问答系统，解决运�
 - **Qwen3-Reranker-8B 交叉编码器**（Cross-Encoder）逐条计算 query-document 相关性分数——这是精度提升的核心环节，较纯向量检索 Top-5 命中率提升约 25%
 - **类别多样性约束**：同一类目最多保留 2 条，防止 LLM 被单一场景信息带偏
 
-数据来源覆盖 **5000+ 篇运维知识文档**（Linux 排障、Docker/K8s、监控告警、网络诊断等），系统检索 Hit Rate@10 达到 **92%**，端到端查询延迟控制在 **800ms 以内**。
+数据来源覆盖 **5000+ 篇运维知识文档**（Linux 排障、Docker/K8s、监控告警、网络诊断等），系统检索 Recall@5 达到 **92%**，Faithfulness 评估 hybrid 显著优于纯向量检索。
 
-### 🤖 Agent 驱动的故障分析
+### 🧠 Supervisor 多 Agent 协作
 
-LangChain Agent 集成 **5 个运维工具**，支持自然语言驱动的端到端排查：
+系统采用 **LangGraph StateGraph 循环图** 架构，由 Supervisor LLM 决策路由，协调 3 个独立 ReAct Agent：
 
+```
+用户: "web-01 最近 3 小时有没有 500 错误？"
+        ↓
+┌──────────────────────────────────────────────────┐
+│ Supervisor (LLM 路由决策)                          │
+│ 1. 理解问题，决定需要哪些信息                       │
+│ 2. 按需路由到 Worker（循环）                        │
+│ 3. 收集所有 Worker 的文本分析结论                    │
+│ 4. next=FINISH → 生成 RCA 报告                     │
+└──────┬──────────────┬──────────────┬──────────────┘
+       │              │              │
+       ▼              ▼              ▼
+┌──────────────┐ ┌────────────┐ ┌──────────────┐
+│ Log Worker   │ │Infra Worker│ │Knowledge     │
+│ (ReAct Agent)│ │(ReAct Agent│ │Worker (ReAct)│
+│              │ │           )│ │              │
+│ query_logs   │ │query_metric│ │search_       │
+│ analyze_     │ │range_query │ │knowledge_base│
+│ errors       │ │check_alerts│ │              │
+│ count_by_    │ │            │ │              │
+│ level        │ │            │ │              │
+└──────┬───────┘ └──────┬─────┘ └──────┬───────┘
+       │                │              │
+       └────────────────┴──────────────┘
+                        ↓
+              Supervisor 汇总文本分析结论
+                        ↓
+              生成 Markdown RCA 报告
+```
+
+每个 Worker 是一个独立的 `create_react_agent`，拥有自己的 LLM + System Prompt + 工具集，自主理解用户意图并执行分析。Supervisor 循环决策（最多 10 轮）收集所有结果后生成标准 RCA 报告（根因分析）。
+
+LangGraph Supervisor StateGraph 协同 **3 个独立 ReAct Agent**，支持自然语言驱动的端到端排查：
+
+| Agent | 工具 | 数据源 |
+|-------|------|--------|
+| **Log Worker** (ReAct) | `query_logs`, `analyze_errors`, `count_by_level` | Loki (云服务器) |
+| **Infra Worker** (ReAct) | `query_metric`, `range_query`, `check_alerts` | Prometheus (云服务器) |
+| **Knowledge Worker** (ReAct) | `search_knowledge_base` | ChromaDB + BM25 |
+
+**Agent 级工具**（tools.py）：
 | 工具 | 功能 | 数据源 |
 |------|------|--------|
 | `get_server_list` | 查看服务器清单 | PostgreSQL |
-| `get_server_status` | 查询服务器实时指标 | PostgreSQL |
-| `get_metrics_history` | 查询历史趋势 | PostgreSQL |
-| `get_logs` | 检索日志 | Loki |
+| `get_server_status` | 查询服务器实时指标 | Prometheus |
 | `search_knowledge_base` | 语义搜索运维文档 | ChromaDB + BM25 |
 
 业务流程示例：
@@ -59,41 +141,49 @@ LangChain Agent 集成 **5 个运维工具**，支持自然语言驱动的端到
 ```
 "分析 web-01 最近的错误日志"
     ↓
-Agent 推理 → 调用 get_logs("web-01") → 检索 Loki 日志
-          → 调用 search_knowledge_base() → 检索 RAG 知识库
-          → 汇总分析结果
+Supervisor 路由 → Log Worker Agent (自主: count_by_level → analyze_errors → query_logs)
+              → Knowledge Worker Agent (搜索相关运维文档)
+              → Supervisor 汇总 → 生成 RCA 报告
     ↓
-"web-01 最近 1 小时出现 23 条 500 错误（nginx  upstream timed out），
-建议检查上游服务状态和后端连接池配置"
+"## RCA 诊断报告
+### 📋 概要
+web-01 最近 1 小时出现 23 条 500 错误（nginx upstream timed out）
+### 🔍 根因
+上游应用服务器响应超时，nginx 默认 60s 代理超时触发
+### 🔧 修复建议
+1. 检查上游服务状态: systemctl status app
+2. 调整 nginx 代理超时: proxy_read_timeout 120s;"
 ```
 
 ### 📊 全链路评估体系
 
 系统内置 **Ragas + 自定义检索指标** 双维度评估框架：
 
-- **检索评估**：Recall@K / Precision@K / MRR，基于 20 条黄金测试集（覆盖精确匹配、语义匹配、跨类查询、故障场景四大类别）
-- **生成评估**：Faithfulness（答案忠实度），通过 Ragas 框架调用 Judge LLM 自动评分
+- **检索评估**：Recall@5 / Precision@5 / MRR，基于 50 条黄金测试集（覆盖精确匹配、语义匹配、跨类查询、故障场景四大类别）
+- **生成评估**：Faithfulness（答案忠实度），通过 Ragas 框架调用 Judge LLM（Qwen3.6）自动评分，Python 实现，无 `nan` 污染
 - **对比模式**：hybrid_search vs vector_only 一键对比，量化验证混合检索优势
-- **缓存机制**：检索/生成/评估结果分层缓存，修改 Judge Prompt 后只需重跑评估阶段
+- **缓存机制**：检索/生成/评估结果分层缓存（JSON），修改 Judge Prompt 后只需重跑评估阶段
 
 评估结果覆盖：
 
 ```
           指标        hybrid     vector      提升
 ──────────────────────────────────────────────
-  recall           92.0%      68.0%     +24.0%
-  precision        85.3%      62.7%     +22.6%
+  recall@5         92.0%      68.0%     +24.0%
+  precision@5      85.3%      62.7%     +22.6%
   mrr              90.0%      70.0%     +20.0%
+  faithfulness     0.78       0.70       +0.08
 ```
 
 ### 🖥 服务器监控与自动采集
 
-基于 Paramiko SSH 的定时采集器，每 **60 秒** 一轮遍历全部受管服务器：
+基于 Paramiko SSH 的心跳检测（每 **60 秒** 一轮）：
 
-- CPU / 内存 / 磁盘使用率采集
-- 系统日志采集并推送至 Loki
-- 阈值告警自动生成（CPU > 80% / 内存 > 80% / 磁盘 > 80%）
-- 离线检测与自动标记，告警状态流转：`open → acknowledged → resolved`
+- 在线/离线状态自动检测
+- 离线告警自动生成（状态流转：`open → acknowledged → resolved`）
+- 服务器恢复在线时自动关闭离线告警
+- **指标采集 → Prometheus + node_exporter**
+- **日志采集 → promtail → Loki**
 - 指标历史趋势通过 Chart.js 可视化
 
 ### 💬 多轮会话记忆
@@ -108,32 +198,36 @@ Agent 推理 → 调用 get_logs("web-01") → 检索 Loki 日志
                          用户
                           │
                           ▼
-                    Flask API
+                    Flask API (api.py)
                           │
                           ▼
-                 ┌─────────────────┐
-                 │   LangChain     │
-                 │    Agent        │
-                 │ (DeepSeek 模型)  │
-                 └────────┬────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-    ┌──────────┐    ┌──────────┐    ┌──────────┐
-    │ 工具调用   │    │ 知识库检索 │    │ 对话记忆  │
-    │ (Tools)  │    │  (RAG)   │    │ (Memory) │
-    └────┬─────┘    └────┬─────┘    └──────────┘
-         │               │
-    ┌────┴────┐     ┌────┴────┐
-    │PostgreSQL│    │ChromaDB │
-    │  Loki    │    │  BM25   │
-    └─────────┘     └─────────┘
-         │
-    ┌────┴────┐
-    │ SSH     │
-    │ 采集器   │
-    │(60s/轮) │
-    └─────────┘
+                 ┌─────────────────────────────┐
+                 │  LangGraph Supervisor        │
+                 │  StateGraph (循环路由决策)    │
+                 │  LLM: DeepSeek (OpenCode)    │
+                 └──────┬──────────┬───────────┘
+                        │          │
+          ┌─────────────┼─────┬────┼─────────────┐
+          ▼             ▼     │    ▼             ▼
+    ┌──────────┐  ┌─────────┐ │  ┌──────────┐  ┌──────────┐
+    │Log Agent │  │Infra    │ │  │Knowledge │  │ 对话记忆  │
+    │(ReAct)   │  │Agent    │ │  │Agent     │  │ (Memory) │
+    │Loki MCP  │  │Prom MCP │ │  │RAG 知识库│  └──────────┘
+    └────┬─────┘  └────┬────┘ │  └────┬─────┘
+         │             │      │       │
+         ▼             ▼      │       ▼
+    ┌─────────┐  ┌──────────┐ │  ┌──────────┐
+    │  Loki   │  │Prometheus│ │  │ ChromaDB │
+    │(云服务器)│  │(云服务器) │ │  │ + BM25   │
+    └─────────┘  └──────────┘ │  └──────────┘
+                              │
+    ┌─────────────────────────┘
+    │
+    ▼
+┌──────────┐
+│ SSH 采集器│
+│(60s 心跳) │
+└──────────┘
 ```
 
 ---
@@ -158,17 +252,19 @@ Conversation    — 对话会话（摘要/开始时间）
 | 层 | 技术 |
 |---|---|
 | 后端框架 | Python, Flask |
-| AI 推理 | LangChain Agent, OpenCode API (DeepSeek) |
+| AI 推理 | LangGraph StateGraph, LangChain ReAct Agent, OpenCode API (DeepSeek) |
 | 向量检索 | ChromaDB, Qwen3-Embedding-8B (SiliconFlow) |
 | 关键词检索 | BM25 (rank_bm25) + jieba 中文分词 |
 | 重排序 | Qwen3-Reranker-8B 交叉编码器 |
 | 评估框架 | Ragas (Faithfulness) + 自定义检索指标 |
 | 数据存储 | PostgreSQL (SQLAlchemy) |
-| 日志聚合 | Grafana Loki |
-| 服务器采集 | Paramiko SSH |
+| 日志聚合 | Grafana Loki (云服务器 Docker) |
+| 指标监控 | Prometheus (云服务器 Docker) |
+| 服务器采集 | Paramiko SSH (仅心跳探活) |
 | 密码安全 | Fernet 对称加密 |
-| 前端可视化 | 原生 JS, Chart.js |
-| 容器化 | Docker (Loki) |
+| 前端框架 | Vue 3 + Pinia + Vue Router |
+| 前端可视化 | Chart.js |
+| 容器化 | Docker Compose (Loki + Prometheus) |
 
 ---
 
@@ -204,29 +300,48 @@ python api.py
 
 ```
 SmartOps/
-├── api.py                   # Flask 主入口，REST API（12+ 端点）
+├── api.py                   # Flask 主入口，REST API（15+ 端点）
 ├── llm/
-│   ├── agent.py             # LangChain Agent（DeepSeek 模型）
-│   ├── tools.py             # 5 个运维工具函数
+│   ├── agent.py             # Agent 入口 chat()，内部转发 LangGraph Supervisor
+│   ├── supervisor.py        # LangGraph StateGraph 循环路由（Supervisor + 3 Worker 节点）
+│   ├── workers.py           # 3 个 ReAct Agent（Log / Infra / Knowledge Worker）
+│   ├── tools.py             # Agent 级运维工具函数
 │   ├── rag.py               # ChromaDB 向量存储与语义搜索
-│   └── retriever.py         # BM25 + 向量 + RRF + 重排序混合检索
+│   ├── retriever.py         # BM25 + 向量 + RRF + 重排序混合检索
+│   └── mcp/
+│       ├── loki_mcp.py      # Loki 日志查询 MCP 封装（3 个工具）
+│       └── prometheus_mcp.py # Prometheus 指标查询 MCP 封装（3 个工具）
 ├── kb/
-│   ├── init_knowledge_base.py  # 知识库导入管线
-│   └── evaluate.py          # RAG 全链路评估（Ragas + 检索指标）
+│   ├── init_knowledge_base.py  # 知识库导入管线（Markdown → chunk → ChromaDB）
+│   └── evaluate.py          # RAG 全链路评估（Ragas + 检索指标 + 对比模式）
 ├── collector/
-│   ├── scheduler.py         # 60s 定时采集调度器 + 告警引擎
-│   └── ssh_client.py        # Paramiko SSH 客户端封装
+│   ├── scheduler.py         # 60s 心跳检测 + 离线告警引擎
+│   ├── ssh_client.py        # Paramiko SSH 客户端封装
+│   └── cloud_helper.py      # 云服务器 Prometheus file_sd 自动同步
 ├── store/
 │   ├── db.py                # SQLAlchemy 引擎
-│   ├── models.py            # 6 个数据模型
+│   ├── models.py            # 7 个数据模型（Server/Metric/Log/Probe/Conversation/Message/Alert）
 │   └── crypto.py            # Fernet 密码加密/解密
+├── frontend/                # Vue 3 前端源码
+│   ├── src/
+│   │   ├── views/           # 7 个页面视图（Overview/Servers/Alerts/Trend/Chat/LogViewer）
+│   │   ├── components/      # 通用组件（Layout/Charts/Chat/Common）
+│   │   ├── stores/          # Pinia 状态管理（servers/alerts/chat）
+│   │   └── api/             # HTTP API 封装
+│   └── vite.config.js       # Vite 构建配置（产物输出到 static/）
 ├── templates/
-│   └── dashboard.html       # 前端 SPA（Chart.js 可视化）
+│   └── index.html           # Flask 渲染入口
+├── static/                  # Vue 构建产物
 ├── data/
-│   ├── ops-skill-tree/      # 运维知识库 Markdown 源文档
+│   ├── ops-skill-tree/      # 运维知识库 Markdown 源文档（5000+ 篇）
 │   ├── chromadb/            # ChromaDB 持久化向量索引
-│   └── eval/                # 评估中间结果缓存
-├── docker-compose.yml       # Loki 容器编排
+│   └── eval/                # 评估中间结果缓存 + 50 条黄金测试集
+├── docker-compose.yml       # Loki + Prometheus 容器编排
+├── prometheus/
+│   └── prometheus.yml       # Prometheus 抓取配置
+├── scripts/
+│   └── sync-prometheus-targets.sh  # 云服务器目标同步脚本
+├── tests/                   # 8 个测试文件（单元测试 + 集成测试）
 ├── requirements.txt
 └── README.md
 ```
@@ -251,12 +366,14 @@ python kb/evaluate.py
 
 ## 路线图
 
+- [x] 多 Agent 协作（LangGraph Supervisor + 3 个 ReAct Worker）
 - [x] Agent Tool Calling（5 个运维工具）
 - [x] RAG 知识库混合搜索（BM25 + 向量 + RRF + 重排序）
 - [x] Loki 日志分析集成
+- [x] Prometheus 指标集成
 - [x] 全链路评估体系（Ragas + 检索指标 + 对比模式）
 - [x] 多轮会话记忆
-- [x] 自动告警引擎（阈值检查 + 离线检测 + 状态流转）
+- [x] 自动告警引擎（离线检测 + 状态流转）
 - [x] 密码安全存储（Fernet 加密）
 - [ ] 多模态知识注入（图片自动描述与索引）
 - [ ] 运维日报 Agent（定时分析趋势与告警）

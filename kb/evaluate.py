@@ -30,7 +30,7 @@ import math
 OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY")
 OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1"
 GENERATOR_MODEL = "deepseek-v4-flash"     # 生成答案
-JUDGE_MODEL = "qwen3.6-35b-a3b"             # 评估打分
+JUDGE_MODEL = "qwen3.6-flash-2026-04-16"             # 评估打分
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
 DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL")
 
@@ -41,112 +41,18 @@ os.makedirs(EVAL_DIR, exist_ok=True)
 client = OpenAI(api_key=OPENCODE_API_KEY, base_url=OPENCODE_BASE_URL)
 
 # ============================================================
-# 测试集 — 15 条 query
+# 测试集 — 从 JSON 加载
 # ============================================================
 
-TEST_QUERIES = [
-    # ---- Linux 主机排障 ----
-    {
-        "query": "top 命令查看 CPU 使用率",
-        "relevant_files": [
-            "02-Linux/02-CPU、内存与负载排查常用命令.md",
-        ],
-    },
-    {
-        "query": "free 命令查看内存",
-        "relevant_files": [
-            "02-Linux/02-CPU、内存与负载排查常用命令.md",
-        ],
-    },
-    {
-        "query": "服务器 CPU 使用率突然飙高怎么排查",
-        "relevant_files": [
-            "02-Linux/09-高级 CPU 排查：线程、上下文切换、软中断与 perf.md",
-            "02-Linux/02-CPU、内存与负载排查常用命令.md",
-        ],
-    },
-    {
-        "query": "OOM Killer 杀进程的机制是什么，怎么预防",
-        "relevant_files": [
-            "02-Linux/10-高级内存排查：OOM、内存泄漏、page cache、slab 与 cgroup.md",
-        ],
-    },
-    {
-        "query": "线上服务突然不可用，我该按什么步骤排查",
-        "relevant_files": [
-            "02-Linux/01-主机层面排障总览与系统资源排查.md",
-        ],
-    },
-    {
-        "query": "磁盘空间不足怎么排查",
-        "relevant_files": [
-            "02-Linux/03-磁盘空间、inode 与磁盘 IO 排查.md",
-        ],
-    },
-    # ---- Docker ----
-    {
-        "query": "Docker 容器日志太多怎么清理",
-        "relevant_files": [
-            "03-Docker/05-Docker 存储、日志与磁盘优化.md",
-        ],
-    },
-    {
-        "query": "Docker 镜像构建优化方法",
-        "relevant_files": [
-            "03-Docker/10-Dockerfile 基础：镜像构建与最佳实践.md",
-            "03-Docker/12-BuildKit、buildx 与高级镜像构建.md",
-        ],
-    },
-    # ---- Kubernetes ----
-    {
-        "query": "Pod 一直 Pending 怎么排查",
-        "relevant_files": [
-            "04-Kubernetes/08-运维/03-集群基础排障/02-Pod Pending 排查：资源不足、调度失败、镜像与 PVC.md",
-        ],
-    },
-    {
-        "query": "Node NotReady 怎么排查",
-        "relevant_files": [
-            "04-Kubernetes/08-运维/03-集群基础排障/01-Node NotReady 排查：kubelet、containerd、CNI 与节点事件.md",
-        ],
-    },
-    # ---- 中间件 ----
-    {
-        "query": "MySQL 慢查询怎么定位和优化",
-        "relevant_files": [
-            "07-中间件/数据库/MySQL.md",
-        ],
-    },
-    {
-        "query": "Kafka 消息堆积怎么处理",
-        "relevant_files": [
-            "07-中间件/消息队列/Kafka.md",
-        ],
-    },
-    # ---- 监控 ----
-    {
-        "query": "Prometheus 告警规则怎么配置",
-        "relevant_files": [
-            "09-监控/Prometheus.md",
-        ],
-    },
-    # ---- 网络 ----
-    {
-        "query": "Linux 网络连通性排查常用命令",
-        "relevant_files": [
-            "02-Linux/06-网络连通性、端口、路由与流量排查.md",
-        ],
-    },
-    # ---- 安全 ----
-    {
-        "query": "Linux 服务器安全加固基本措施",
-        "relevant_files": [
-            "14-安全/Linux安全加固.md",
-            "14-安全/SSH安全.md",
-            "14-安全/防火墙策略.md",
-        ],
-    },
-]
+def _load_test_queries():
+    """从 data/eval/test_queries.json 加载测试集"""
+    _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _path = os.path.join(_base, "data/eval/test_queries.json")
+    with open(_path, "r", encoding="utf-8") as _f:
+        return json.load(_f)
+
+TEST_QUERIES = _load_test_queries()
+print(f"  加载测试集: {len(TEST_QUERIES)} 条 query")
 
 
 # ============================================================
@@ -201,7 +107,7 @@ def compute_retrieval_metrics(query, relevant_ids, retrieved_items, k=5):
 # LLM 调用辅助
 # ============================================================
 
-def call_llm(model, system_prompt, user_prompt, temperature=0.0, max_tokens=1024):
+def call_llm(model, system_prompt, user_prompt, temperature=0.0, max_tokens=4096):
     """调用 OpenCode API（OpenAI 兼容）"""
     resp = client.chat.completions.create(
         model=model,
@@ -219,13 +125,15 @@ def call_llm(model, system_prompt, user_prompt, temperature=0.0, max_tokens=1024
 # Phase 1: 检索（已有）
 # ============================================================
 
-def vector_search(query, top_k=3):
-    """纯向量搜索"""
+def vector_search(query, top_k=3, category=None):
+    """纯向量搜索（带可选的 category 过滤）"""
     collection = get_collection()
     vector = embed_text(query)
+    where_filter = {"category": category} if category else None
     results = collection.query(
         query_embeddings=[vector],
         n_results=top_k,
+        where=where_filter,
         include=["documents", "metadatas", "distances"],
     )
     if not results["documents"] or not results["documents"][0]:
@@ -240,7 +148,7 @@ def vector_search(query, top_k=3):
     return output
 
 
-def run_retrieval(search_fn, name):
+def run_retrieval(search_fn, name, use_category_filter=True):
     """对所有 query 执行检索，存 JSON"""
     path = f"{EVAL_DIR}/retrieval_{name}.json"
 
@@ -252,7 +160,8 @@ def run_retrieval(search_fn, name):
 
     results = []
     for tq in TEST_QUERIES:
-        chunks = search_fn(tq["query"])
+        category = tq["relevant_files"][0].split("/")[0] if use_category_filter else None
+        chunks = search_fn(tq["query"], top_k=5, category=category)
         results.append({
             "query": tq["query"],
             "relevant_files": tq["relevant_files"],
@@ -358,13 +267,13 @@ def run_evaluation(generation_results, name, judge_model="deepseek-v4-pro"):
 
     dataset = Dataset.from_list(rows)
 
-    # judge LLM — 走 DashScope (Qwen 官方), qwen3.7-plus 推理模型需 bypass_n
+    # judge LLM — 走 DashScope (Qwen 官方)
     judge_llm = LangchainLLMWrapper(
         ChatOpenAI(
             model=judge_model,
             base_url=DASHSCOPE_BASE_URL,
             api_key=DASHSCOPE_API_KEY,
-            max_tokens=8192,
+            max_tokens=16384,
         ),
         bypass_n=True,
         run_config=RunConfig(timeout=300),
@@ -405,12 +314,13 @@ def run_evaluation(generation_results, name, judge_model="deepseek-v4-pro"):
 # Phase 4: 检索指标对比（保留原有逻辑）
 # ============================================================
 
-def evaluate_retrieval(search_fn, test_queries, k=5):
+def evaluate_retrieval(search_fn, test_queries, k=5, use_category_filter=True):
     """计算传统检索指标"""
     all_metrics = []
     for tq in test_queries:
         try:
-            results = search_fn(tq["query"])
+            category = tq["relevant_files"][0].split("/")[0] if use_category_filter else None
+            results = search_fn(tq["query"], top_k=5, category=category)
         except Exception as e:
             print(f"  [ERR] {tq['query'][:40]}... → {e}")
             all_metrics.append({"recall": 0, "precision": 0, "mrr": 0, "retrieved": []})
@@ -444,6 +354,7 @@ def run_comparison():
     print_header("RAG 评估 — 完整流程")
     print("  Judge 模型:", JUDGE_MODEL)
     print("  生成模型:", GENERATOR_MODEL)
+    print("  测试集: 50 条")
 
     # 确保 BM25 索引
     print("\n[0] 初始化 BM25 索引...")
@@ -538,10 +449,8 @@ def run_comparison():
         else:
             status = "[FAIL]"
             score_str = f"{score:.0%}"
-
         print(f"  {status} Q{i+1:02d}: {item['query'][:55]:<55}")
         print(f"      Faithfulness={score_str}")
-
     # ============================================================
     # 总结
     # ============================================================
