@@ -82,11 +82,14 @@ def supervisor_node(state: AgentState) -> dict:
     try:
         resp = llm.invoke([("system", prompt), *state["messages"]])
         decision = json.loads(resp.content.strip().strip("```json").strip("```").strip())
-    except Exception:
-        # 解析失败时终止
+    except Exception as e:
+        import traceback
+        print(f"[supervisor] LLM 决策失败: {e}\n{traceback.format_exc()}", flush=True)
+        # 解析失败时终止，但用兜底报告而不是空
+        fallback = _auto_report(state.get("intermediate_results", {}))
         return {
             "next": "FINISH",
-            "final_report": f"【Supervisor 决策异常】已收集的数据：{info_summary or '无'}",
+            "final_report": f"【诊断报告（自动生成）】\n{fallback}",
         }
 
     if decision.get("next") == "FINISH":
