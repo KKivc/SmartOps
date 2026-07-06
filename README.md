@@ -21,9 +21,10 @@
   </tr>
   <tr>
     <td align="center"><img src="screenshots/logs.png" width="95%" alt="日志"><br><strong>📋 日志</strong> — Loki 日志检索</td>
-    <td align="center"><img src="screenshots/chat-v2.gif" width="95%" alt="AI 对话"><br><strong>🤖 AI 对话</strong> — 多轮会话 + RCA 报告</td>
+    <td align="center"><img src="screenshots/chat.gif" width="95%" alt="AI 对话"><br><strong>🤖 AI 对话</strong> — 多轮会话 + RCA 报告</td>
   </tr>
 </table>
+
 
 ---
 
